@@ -168,6 +168,17 @@
   var SESSION_TTL = 60 * 30;
   var EVENT_ENDPOINT = normalizeApiUrl(apiUrlRaw, "/api/v1/ingest");
   var lastPath = null;
+  var TRACKING_KEYS = [
+    "ref",
+    "source",
+    "via",
+    "utm_source",
+    "utm_medium",
+    "utm_campaign",
+    "utm_term",
+    "utm_content",
+  ];
+  var lastTracking = null;
 
   function isSecureContext() {
     return typeof location !== "undefined" && location.protocol === "https:";
@@ -182,6 +193,124 @@
       }
     }
     return path;
+  }
+
+  function decodeParamValue(value) {
+    if (!value) {
+      return "";
+    }
+    var replaced = value.replace(/\+/g, " ");
+    try {
+      return decodeURIComponent(replaced);
+    } catch (error) {
+      return replaced;
+    }
+  }
+
+  function normalizeTrackingKey(value) {
+    if (!value) {
+      return "";
+    }
+    var decoded = decodeParamValue(value);
+    return decoded.trim().toLowerCase();
+  }
+
+  function normalizeTrackingValue(value) {
+    if (!value) {
+      return "";
+    }
+    var decoded = decodeParamValue(value);
+    var trimmed = decoded.trim();
+    if (!trimmed) {
+      return "";
+    }
+    return trimmed.toLowerCase();
+  }
+
+  function parseTrackingParams(query) {
+    if (!query) {
+      return null;
+    }
+    var queryString = query.charAt(0) === "?" ? query.slice(1) : query;
+    if (!queryString) {
+      return null;
+    }
+    var values = {};
+    var found = false;
+    if (typeof URLSearchParams !== "undefined") {
+      var params = new URLSearchParams(queryString);
+      for (var i = 0; i < TRACKING_KEYS.length; i += 1) {
+        var key = TRACKING_KEYS[i];
+        if (params.has(key)) {
+          var value = normalizeTrackingValue(params.get(key));
+          if (value) {
+            values[key] = value;
+            found = true;
+          }
+        }
+      }
+      return found ? values : null;
+    }
+
+    var keyLookup = {};
+    for (var j = 0; j < TRACKING_KEYS.length; j += 1) {
+      keyLookup[TRACKING_KEYS[j]] = true;
+    }
+
+    var pairs = queryString.split("&");
+    for (var k = 0; k < pairs.length; k += 1) {
+      var pair = pairs[k];
+      if (!pair) {
+        continue;
+      }
+      var equalsIndex = pair.indexOf("=");
+      var rawKey = equalsIndex === -1 ? pair : pair.slice(0, equalsIndex);
+      var normalizedKey = normalizeTrackingKey(rawKey);
+      if (!normalizedKey || !keyLookup[normalizedKey]) {
+        continue;
+      }
+      var rawValue = equalsIndex === -1 ? "" : pair.slice(equalsIndex + 1);
+      var normalizedValue = normalizeTrackingValue(rawValue);
+      if (!normalizedValue) {
+        continue;
+      }
+      values[normalizedKey] = normalizedValue;
+      found = true;
+    }
+    return found ? values : null;
+  }
+
+  function mergeTrackingParams(previous, current) {
+    if (!previous && !current) {
+      return null;
+    }
+    var merged = {};
+    var hasAny = false;
+    for (var i = 0; i < TRACKING_KEYS.length; i += 1) {
+      var key = TRACKING_KEYS[i];
+      var value = "";
+      if (current && current[key]) {
+        value = current[key];
+      } else if (previous && previous[key]) {
+        value = previous[key];
+      }
+      if (value) {
+        merged[key] = value;
+        hasAny = true;
+      }
+    }
+    return hasAny ? merged : null;
+  }
+
+  function getTrackingParams() {
+    if (typeof location === "undefined") {
+      return lastTracking;
+    }
+    var current = parseTrackingParams(location.search || "");
+    if (current) {
+      lastTracking = mergeTrackingParams(lastTracking, current);
+    }
+    return lastTracking;
   }
 
   function generateId() {
@@ -273,6 +402,14 @@
       visitorId: getVisitorId(),
       sessionId: getSessionId(),
     };
+    var tracking = getTrackingParams();
+    if (tracking) {
+      for (var key in tracking) {
+        if (Object.prototype.hasOwnProperty.call(tracking, key)) {
+          payload[key] = tracking[key];
+        }
+      }
+    }
     sendEvent(payload, { keepalive: true });
   }
 
