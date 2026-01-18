@@ -13,3 +13,4 @@ neonConfig.webSocketConstructor = ws;
 const sql = neon(env.DATABASE_URL);
 export const db = drizzle(sql, { schema });
 export * from "./schema";
+export { and, eq } from "drizzle-orm";

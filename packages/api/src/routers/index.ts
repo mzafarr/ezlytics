@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 
 import { z } from "zod";
 
-import { db, site } from "@my-better-t-app/db";
+import { and, db, eq, site } from "@my-better-t-app/db";
+import { TRPCError } from "@trpc/server";
 
 import { protectedProcedure, publicProcedure, router } from "../index";
 
@@ -47,6 +48,7 @@ export const appRouter = router({
           name: true,
           domain: true,
           websiteId: true,
+          apiKey: true,
           createdAt: true,
         },
         where: (sites, { eq }) => eq(sites.userId, ctx.session.user.id),
@@ -55,6 +57,7 @@ export const appRouter = router({
     }),
     create: protectedProcedure.input(siteInputSchema).mutation(async ({ input, ctx }) => {
       const websiteId = `web_${randomUUID()}`;
+      const apiKey = `key_${randomUUID()}`;
       const id = randomUUID();
 
       await db.insert(site).values({
@@ -63,6 +66,7 @@ export const appRouter = router({
         name: input.name,
         domain: input.domain,
         websiteId,
+        apiKey,
       });
 
       return {
@@ -70,8 +74,33 @@ export const appRouter = router({
         name: input.name,
         domain: input.domain,
         websiteId,
+        apiKey,
       };
     }),
+    rotateApiKey: protectedProcedure
+      .input(
+        z.object({
+          siteId: z.string().min(1, "Site id is required"),
+        }),
+      )
+      .mutation(async ({ input, ctx }) => {
+        const apiKey = `key_${randomUUID()}`;
+
+        const updated = await db
+          .update(site)
+          .set({ apiKey })
+          .where(and(eq(site.id, input.siteId), eq(site.userId, ctx.session.user.id)))
+          .returning({ id: site.id, apiKey: site.apiKey });
+
+        if (!updated.length) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Site not found",
+          });
+        }
+
+        return updated[0];
+      }),
   }),
 });
 export type AppRouter = typeof appRouter;

@@ -18,12 +18,24 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
   const sitesQueryOptions = trpc.sites.list.queryOptions();
   const sites = useQuery(sitesQueryOptions);
   const [hasCopied, setHasCopied] = useState(false);
+  const [hasCopiedKey, setHasCopiedKey] = useState(false);
 
   const createSite = useMutation(
     trpc.sites.create.mutationOptions({
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: sitesQueryOptions.queryKey });
         toast.success("Site created");
+      },
+      onError: (error) => {
+        toast.error(error.message);
+      },
+    }),
+  );
+  const rotateApiKey = useMutation(
+    trpc.sites.rotateApiKey.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: sitesQueryOptions.queryKey });
+        toast.success("API key rotated");
       },
       onError: (error) => {
         toast.error(error.message);
@@ -54,6 +66,7 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
   const installSnippet = latestSite
     ? `<script\n  defer\n  data-website-id=\"${latestSite.websiteId}\"\n  data-domain=\"${latestSite.domain}\"\n  src=\"https://your-analytics-domain.com/script.js\"\n></script>`
     : "";
+  const apiKey = latestSite?.apiKey ?? "";
 
   const handleCopy = async () => {
     if (!installSnippet) {
@@ -78,6 +91,31 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
       setTimeout(() => setHasCopied(false), 2000);
     } catch {
       toast.error("Failed to copy snippet");
+    }
+  };
+  const handleCopyApiKey = async () => {
+    if (!apiKey) {
+      return;
+    }
+
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(apiKey);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = apiKey;
+        textarea.style.position = "fixed";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      setHasCopiedKey(true);
+      toast.success("API key copied to clipboard");
+      setTimeout(() => setHasCopiedKey(false), 2000);
+    } catch {
+      toast.error("Failed to copy API key");
     }
   };
 
@@ -187,6 +225,50 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
               {hasCopied ? "Copied!" : "Copy snippet"}
             </Button>
             {sites.isLoading && <span className="text-xs text-muted-foreground">Loading…</span>}
+          </CardFooter>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>API key</CardTitle>
+            <CardDescription>Use this as a Bearer token for /api/v1 requests.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {latestSite ? (
+              <>
+                <div className="text-xs text-muted-foreground">
+                  {latestSite.name} · {latestSite.domain}
+                </div>
+                <Input
+                  className="font-mono text-xs"
+                  readOnly
+                  value={apiKey}
+                  aria-label="Site API key"
+                />
+              </>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Create a site to generate an API key.
+              </p>
+            )}
+          </CardContent>
+          <CardFooter className="gap-2">
+            <Button type="button" onClick={handleCopyApiKey} disabled={!latestSite}>
+              {hasCopiedKey ? "Copied!" : "Copy key"}
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                if (!latestSite) {
+                  return;
+                }
+                rotateApiKey.mutate({ siteId: latestSite.id });
+              }}
+              disabled={!latestSite || rotateApiKey.isPending}
+            >
+              {rotateApiKey.isPending ? "Rotating..." : "Rotate key"}
+            </Button>
           </CardFooter>
         </Card>
       </div>

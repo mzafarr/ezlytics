@@ -13,6 +13,7 @@ export const site = pgTable(
     name: text("name").notNull(),
     domain: text("domain").notNull(),
     websiteId: text("website_id").notNull(),
+    apiKey: text("api_key").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
       .defaultNow()
@@ -22,6 +23,7 @@ export const site = pgTable(
   (table) => [
     index("site_userId_idx").on(table.userId),
     uniqueIndex("site_websiteId_idx").on(table.websiteId),
+    uniqueIndex("site_apiKey_idx").on(table.apiKey),
   ],
 );
 
