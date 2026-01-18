@@ -1,5 +1,6 @@
 import { useForm } from "@tanstack/react-form";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
 import { toast } from "sonner";
 import z from "zod";
 
@@ -13,6 +14,9 @@ import { Label } from "./ui/label";
 export default function SignInForm({ onSwitchToSignUp }: { onSwitchToSignUp: () => void }) {
   const router = useRouter();
   const { isPending } = authClient.useSession();
+  const [magicLinkSent, setMagicLinkSent] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [isMagicLinkLoading, setIsMagicLinkLoading] = useState(false);
 
   const form = useForm({
     defaultValues: {
@@ -44,13 +48,90 @@ export default function SignInForm({ onSwitchToSignUp }: { onSwitchToSignUp: () 
     },
   });
 
+  const handleMagicLink = async () => {
+    const email = form.getFieldValue("email");
+    if (!email || !z.string().email().safeParse(email).success) {
+      toast.error("Please enter a valid email address");
+      return;
+    }
+
+    setIsMagicLinkLoading(true);
+    try {
+      await authClient.signIn.magicLink(
+        {
+          email,
+          callbackURL: "/dashboard",
+        },
+        {
+          onSuccess: () => {
+            setMagicLinkSent(true);
+            toast.success("Magic link sent! Check your email.");
+          },
+          onError: (error) => {
+            toast.error(error.error.message || "Failed to send magic link");
+          },
+        },
+      );
+    } finally {
+      setIsMagicLinkLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setIsGoogleLoading(true);
+    try {
+      await authClient.signIn.social({
+        provider: "google",
+        callbackURL: "/dashboard",
+      });
+    } catch (error) {
+      toast.error("Failed to sign in with Google");
+      setIsGoogleLoading(false);
+    }
+  };
+
   if (isPending) {
     return <Loader />;
+  }
+
+  if (magicLinkSent) {
+    return (
+      <div className="mx-auto w-full mt-10 max-w-md p-6 text-center">
+        <h1 className="mb-6 text-3xl font-bold">Check your email</h1>
+        <p className="text-muted-foreground mb-4">
+          We sent a magic link to your email. Click the link to sign in.
+        </p>
+        <Button variant="link" onClick={() => setMagicLinkSent(false)}>
+          Back to sign in
+        </Button>
+      </div>
+    );
   }
 
   return (
     <div className="mx-auto w-full mt-10 max-w-md p-6">
       <h1 className="mb-6 text-center text-3xl font-bold">Welcome Back</h1>
+
+      <div className="space-y-4">
+        <Button
+          type="button"
+          variant="outline"
+          className="w-full"
+          onClick={handleGoogleSignIn}
+          disabled={isGoogleLoading}
+        >
+          {isGoogleLoading ? "Signing in..." : "Continue with Google"}
+        </Button>
+
+        <div className="relative">
+          <div className="absolute inset-0 flex items-center">
+            <span className="w-full border-t" />
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-background px-2 text-muted-foreground">Or continue with</span>
+          </div>
+        </div>
+      </div>
 
       <form
         onSubmit={(e) => {
@@ -58,7 +139,7 @@ export default function SignInForm({ onSwitchToSignUp }: { onSwitchToSignUp: () 
           e.stopPropagation();
           form.handleSubmit();
         }}
-        className="space-y-4"
+        className="space-y-4 mt-4"
       >
         <div>
           <form.Field name="email">
@@ -117,6 +198,16 @@ export default function SignInForm({ onSwitchToSignUp }: { onSwitchToSignUp: () 
             </Button>
           )}
         </form.Subscribe>
+
+        <Button
+          type="button"
+          variant="secondary"
+          className="w-full"
+          onClick={handleMagicLink}
+          disabled={isMagicLinkLoading}
+        >
+          {isMagicLinkLoading ? "Sending..." : "Send Magic Link"}
+        </Button>
       </form>
 
       <div className="mt-4 text-center">
