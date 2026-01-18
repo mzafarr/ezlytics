@@ -3,9 +3,9 @@ This file is generated from README.template.md.
 Run `bun run sync-readme` after changing packages/config/src/brand.ts.
 -->
 
-# my-better-t-app
+# {{brandName}}
 
-my-better-t-app — Web analytics MVP built with Better-T-Stack.
+{{brandName}} — {{brandDescription}}
 
 This project was created with [Better-T-Stack](https://github.com/AmanVarshney01/create-better-t-stack), a modern TypeScript stack that combines Next.js, Self, TRPC, and more.
 

@@ -23,6 +23,7 @@
     "check-types": "turbo check-types",
     "test": "node --test tests/*.test.js",
     "lint": "node scripts/lint.js",
+    "sync-readme": "bun scripts/render-readme.ts",
     "dev:native": "turbo -F native dev",
     "dev:web": "turbo -F web dev",
     "db:push": "turbo -F @my-better-t-app/db db:push",

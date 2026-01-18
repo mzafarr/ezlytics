@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import { BRAND_DESCRIPTION, BRAND_NAME } from "@my-better-t-app/config/brand";
 import { Geist, Geist_Mono } from "next/font/google";
 
 import "../index.css";
@@ -17,8 +18,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "my-better-t-app",
-  description: "my-better-t-app",
+  title: BRAND_NAME,
+  description: BRAND_DESCRIPTION,
 };
 
 export default function RootLayout({
