@@ -16,8 +16,16 @@
   }
 
   var disableConsole = script && script.hasAttribute("data-disable-console");
+  var debug = script && script.hasAttribute("data-debug");
+  var allowLocalhost = script && script.hasAttribute("data-allow-localhost");
+  var allowFileProtocol =
+    script && script.hasAttribute("data-allow-file-protocol");
   var websiteId = script ? script.getAttribute("data-website-id") : "";
   var domain = script ? script.getAttribute("data-domain") : "";
+  var allowedHostnamesRaw = script
+    ? script.getAttribute("data-allowed-hostnames")
+    : "";
+  var apiUrlRaw = script ? script.getAttribute("data-api-url") : "";
 
   function warn(message) {
     if (disableConsole) {
@@ -35,6 +43,101 @@
     return;
   }
 
+  function parseAllowedHostnames(value) {
+    if (!value) {
+      return [];
+    }
+    return value
+      .split(/[\s,]+/)
+      .map(function (entry) {
+        return entry.trim();
+      })
+      .filter(Boolean);
+  }
+
+  function normalizeApiUrl(value, fallback) {
+    if (!value) {
+      return fallback;
+    }
+    var trimmed = value.trim();
+    if (!trimmed) {
+      return fallback;
+    }
+    if (
+      trimmed.indexOf("http://") === 0 ||
+      trimmed.indexOf("https://") === 0 ||
+      trimmed.indexOf("//") === 0 ||
+      trimmed.indexOf(".") === 0 ||
+      trimmed.indexOf("/") === 0
+    ) {
+      return trimmed;
+    }
+    return "/" + trimmed;
+  }
+
+  function isInIframe() {
+    if (typeof window === "undefined") {
+      return false;
+    }
+    try {
+      return window.self !== window.top;
+    } catch (error) {
+      return true;
+    }
+  }
+
+  function isLocalhost(hostname) {
+    return (
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "::1"
+    );
+  }
+
+  function hostnameAllowed(hostname, allowlist) {
+    if (!allowlist || allowlist.length === 0) {
+      return true;
+    }
+    for (var i = 0; i < allowlist.length; i += 1) {
+      var entry = allowlist[i];
+      if (!entry) {
+        continue;
+      }
+      if (entry.indexOf(".") === 0) {
+        if (hostname.slice(-entry.length) === entry) {
+          return true;
+        }
+        continue;
+      }
+      if (hostname === entry || hostname.slice(-entry.length - 1) === "." + entry) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  var allowedHostnames = parseAllowedHostnames(allowedHostnamesRaw);
+
+  if (!debug && isInIframe()) {
+    warn("Tracking disabled: script is running inside an iframe.");
+    return;
+  }
+
+  if (typeof location !== "undefined") {
+    if (location.protocol === "file:" && !allowFileProtocol) {
+      warn("Tracking disabled: file protocol is not allowed.");
+      return;
+    }
+    if (!allowLocalhost && isLocalhost(location.hostname || "")) {
+      warn("Tracking disabled: localhost is not allowed.");
+      return;
+    }
+    if (!hostnameAllowed(location.hostname || "", allowedHostnames)) {
+      warn("Tracking disabled: hostname is not in the allowed list.");
+      return;
+    }
+  }
+
   var existing = window.datafast;
   if (typeof existing !== "function") {
     var queue = [];
@@ -49,14 +152,21 @@
     websiteId: websiteId,
     domain: domain,
     disableConsole: disableConsole,
+    debug: debug,
+    allowLocalhost: allowLocalhost,
+    allowFileProtocol: allowFileProtocol,
+    allowedHostnames: allowedHostnames,
   };
+  if (apiUrlRaw) {
+    config.apiUrl = apiUrlRaw;
+  }
   window.datafast.config = config;
 
   var VISITOR_COOKIE = "datafast_visitor_id";
   var SESSION_COOKIE = "datafast_session_id";
   var VISITOR_TTL = 60 * 60 * 24 * 365;
   var SESSION_TTL = 60 * 30;
-  var EVENT_ENDPOINT = "/api/v1/ingest";
+  var EVENT_ENDPOINT = normalizeApiUrl(apiUrlRaw, "/api/v1/ingest");
   var lastPath = null;
 
   function isSecureContext() {
