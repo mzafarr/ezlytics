@@ -21,7 +21,7 @@
     "dev": "turbo dev",
     "build": "turbo build",
     "check-types": "turbo check-types",
-    "test": "node --test tests/auth-feature.test.js",
+    "test": "node --test tests/*.test.js",
     "lint": "node scripts/lint.js",
     "dev:native": "turbo -F native dev",
     "dev:web": "turbo -F web dev",
