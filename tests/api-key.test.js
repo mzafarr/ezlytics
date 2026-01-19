@@ -21,3 +21,11 @@ test("sites router supports api key rotation", () => {
   assert.ok(content.includes("rotateApiKey"));
   assert.ok(content.includes("key_"));
 });
+
+test("proxy endpoints expose script and events routes", () => {
+  const scriptRoute = read("apps/web/src/app/js/script.js/route.ts");
+  assert.ok(scriptRoute.includes("application/javascript"));
+
+  const eventsRoute = read("apps/web/src/app/api/events/route.ts");
+  assert.ok(eventsRoute.includes("/api/v1/ingest"));
+});

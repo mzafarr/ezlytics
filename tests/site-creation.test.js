@@ -20,6 +20,7 @@ test("install snippet includes required data attributes and copy control", () =>
   const content = read("apps/web/src/app/dashboard/dashboard.tsx");
   assert.ok(content.includes("data-website-id"));
   assert.ok(content.includes("data-domain"));
+  assert.ok(content.includes("/js/script.js"));
   assert.ok(content.includes("Copy snippet"));
 });
 

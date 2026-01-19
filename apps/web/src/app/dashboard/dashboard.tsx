@@ -332,7 +332,7 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
 
   const latestSite = sites.data?.[0];
   const installSnippet = latestSite
-    ? `<script\n  defer\n  data-website-id=\"${latestSite.websiteId}\"\n  data-domain=\"${latestSite.domain}\"\n  src=\"https://your-analytics-domain.com/script.js\"\n></script>`
+    ? `<script\n  defer\n  data-website-id=\"${latestSite.websiteId}\"\n  data-domain=\"${latestSite.domain}\"\n  src=\"https://your-analytics-domain.com/js/script.js\"\n></script>`
     : "";
   const apiKey = latestSite?.apiKey ?? "";
   const activeFilters = (Object.entries(filters) as Array<[keyof typeof defaultFilters, string]>)
