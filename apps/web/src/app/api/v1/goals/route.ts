@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import { verifyApiKey } from "@my-better-t-app/api/api-key";
 import { and, db, eq, rawEvent } from "@my-better-t-app/db";
-import { metricsForEvent, upsertRollups } from "@/lib/rollups";
+import { extractDimensionRollups, metricsForEvent, upsertDimensionRollups, upsertRollups } from "@/lib/rollups";
 
 const MAX_METADATA_KEYS = 10;
 const MAX_METADATA_KEY_LENGTH = 64;
@@ -156,10 +156,22 @@ export const POST = async (request: NextRequest) => {
     createdAt,
   });
 
+  const metrics = metricsForEvent({ type: "goal", metadata });
+
   await upsertRollups({
     siteId: authResult.siteId,
     timestamp: createdAt,
-    metrics: metricsForEvent({ type: "goal", metadata }),
+    metrics,
+  });
+
+  await upsertDimensionRollups({
+    siteId: authResult.siteId,
+    timestamp: createdAt,
+    metrics,
+    dimensions: extractDimensionRollups({
+      type: "goal",
+      name: parsed.data.name,
+    }),
   });
 
   return NextResponse.json({ ok: true });

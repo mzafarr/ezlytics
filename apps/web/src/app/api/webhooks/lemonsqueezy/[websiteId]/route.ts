@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 
 import { and, db, eq, rawEvent } from "@my-better-t-app/db";
-import { metricsForEvent, upsertRollups } from "@/lib/rollups";
+import { extractDimensionRollups, metricsForEvent, upsertDimensionRollups, upsertRollups } from "@/lib/rollups";
 
 const SUPPORTED_EVENTS = new Set(["order_created", "subscription_payment_success"]);
 
@@ -179,16 +179,30 @@ export const POST = async (
     metadata: goalMetadata,
   });
 
+  const timestamp = new Date();
+  const paymentMetrics = metricsForEvent({ type: "payment", metadata: paymentMetadata });
+  const goalMetrics = metricsForEvent({ type: "goal", metadata: goalMetadata });
+
   await upsertRollups({
     siteId: siteRecord.id,
-    timestamp: new Date(),
-    metrics: metricsForEvent({ type: "payment", metadata: paymentMetadata }),
+    timestamp,
+    metrics: paymentMetrics,
   });
 
   await upsertRollups({
     siteId: siteRecord.id,
-    timestamp: new Date(),
-    metrics: metricsForEvent({ type: "goal", metadata: goalMetadata }),
+    timestamp,
+    metrics: goalMetrics,
+  });
+
+  await upsertDimensionRollups({
+    siteId: siteRecord.id,
+    timestamp,
+    metrics: goalMetrics,
+    dimensions: extractDimensionRollups({
+      type: "goal",
+      name: getGoalName(amount),
+    }),
   });
 
   return NextResponse.json({ ok: true });

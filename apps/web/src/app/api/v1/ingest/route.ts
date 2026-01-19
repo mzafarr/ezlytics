@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import { db, rawEvent } from "@my-better-t-app/db";
 import { env } from "@my-better-t-app/env/server";
-import { metricsForEvent, upsertRollups } from "@/lib/rollups";
+import { extractDimensionRollups, metricsForEvent, upsertDimensionRollups, upsertRollups } from "@/lib/rollups";
 
 const DEFAULT_MAX_PAYLOAD_BYTES = 32 * 1024;
 const MAX_PAYLOAD_BYTES = env.INGEST_MAX_PAYLOAD_BYTES ?? DEFAULT_MAX_PAYLOAD_BYTES;
@@ -448,13 +448,27 @@ export const POST = async (request: NextRequest) => {
     createdAt,
   });
 
+  const metrics = metricsForEvent({
+    type: payload.type,
+    metadata: metadata && typeof metadata === "object" ? metadata : null,
+    sessionId: payload.sessionId ?? null,
+  });
+
   await upsertRollups({
     siteId: siteRecord.id,
     timestamp: createdAt,
-    metrics: metricsForEvent({
+    metrics,
+  });
+
+  await upsertDimensionRollups({
+    siteId: siteRecord.id,
+    timestamp: createdAt,
+    metrics,
+    dimensions: extractDimensionRollups({
       type: payload.type,
+      name: payload.name ?? null,
       metadata: metadata && typeof metadata === "object" ? metadata : null,
-      sessionId: payload.sessionId ?? null,
+      normalized,
     }),
   });
 

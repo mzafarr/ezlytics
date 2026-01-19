@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { db, rollupDaily, rollupHourly, sql } from "@my-better-t-app/db";
+import { db, rollupDaily, rollupDimensionDaily, rollupDimensionHourly, rollupHourly, sql } from "@my-better-t-app/db";
 
 export type RollupMetrics = {
   visitors: number;
@@ -8,6 +8,21 @@ export type RollupMetrics = {
   pageviews: number;
   goals: number;
   revenue: number;
+};
+
+export type RollupDimension =
+  | "page"
+  | "referrer_domain"
+  | "utm_source"
+  | "utm_campaign"
+  | "country"
+  | "device"
+  | "browser"
+  | "goal";
+
+export type RollupDimensionEntry = {
+  dimension: RollupDimension;
+  value: string;
 };
 
 const normalizeMetric = (value: number) =>
@@ -23,6 +38,42 @@ const normalizeMetrics = (metrics: RollupMetrics): RollupMetrics => ({
 
 const hasMetrics = (metrics: RollupMetrics) =>
   Object.values(metrics).some((value) => value > 0);
+
+const normalizeDimensionValue = (value: string, maxLength = 128) => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+  const sanitized = trimmed.replace(/\s+/g, " ");
+  return sanitized.length > maxLength ? sanitized.slice(0, maxLength) : sanitized;
+};
+
+const ensureDimensionValue = (value: string, fallback: string, lowercase = true) => {
+  const normalized = normalizeDimensionValue(value);
+  if (!normalized) {
+    return fallback;
+  }
+  return lowercase ? normalized.toLowerCase() : normalized;
+};
+
+const normalizeReferrerDomain = (value?: string | null) => {
+  if (!value) {
+    return "";
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+  try {
+    const parsed = new URL(trimmed, "https://placeholder.local");
+    if (parsed.hostname) {
+      return parsed.hostname.toLowerCase();
+    }
+  } catch (error) {
+    return trimmed.toLowerCase();
+  }
+  return "";
+};
 
 export const getRevenueAmount = (metadata?: Record<string, unknown> | null) => {
   if (!metadata) {
@@ -135,4 +186,153 @@ export const upsertRollups = async ({
         revenue: sql`${rollupDaily.revenue} + ${normalized.revenue}`,
       },
     });
+};
+
+export const extractDimensionRollups = ({
+  type,
+  name,
+  metadata,
+  normalized,
+}: {
+  type: string;
+  name?: string | null;
+  metadata?: Record<string, unknown> | null;
+  normalized?: Record<string, unknown> | null;
+}): RollupDimensionEntry[] => {
+  const entries: RollupDimensionEntry[] = [];
+  const normalizedRecord = normalized ?? {};
+  const hasNormalizedContext = Object.keys(normalizedRecord).length > 0;
+  const pathValue = typeof normalizedRecord.path === "string" ? normalizedRecord.path : "";
+  const referrerValue = typeof normalizedRecord.referrer === "string" ? normalizedRecord.referrer : "";
+  const deviceValue = typeof normalizedRecord.device === "string" ? normalizedRecord.device : "";
+  const browserValue = typeof normalizedRecord.browser === "string" ? normalizedRecord.browser : "";
+  const countryValue = typeof normalizedRecord.country === "string" ? normalizedRecord.country : "";
+  const utmRecord =
+    normalizedRecord.utm && typeof normalizedRecord.utm === "object" ? (normalizedRecord.utm as Record<string, unknown>) : {};
+
+  if (hasNormalizedContext) {
+    entries.push({ dimension: "page", value: ensureDimensionValue(pathValue || "/", "/", false) });
+    entries.push({
+      dimension: "referrer_domain",
+      value: ensureDimensionValue(normalizeReferrerDomain(referrerValue), "direct"),
+    });
+    entries.push({
+      dimension: "utm_source",
+      value: ensureDimensionValue(
+        typeof utmRecord.utm_source === "string" ? utmRecord.utm_source : "",
+        "not set",
+      ),
+    });
+    entries.push({
+      dimension: "utm_campaign",
+      value: ensureDimensionValue(
+        typeof utmRecord.utm_campaign === "string" ? utmRecord.utm_campaign : "",
+        "not set",
+      ),
+    });
+    entries.push({
+      dimension: "country",
+      value: ensureDimensionValue(countryValue, "unknown", false),
+    });
+    entries.push({
+      dimension: "device",
+      value: ensureDimensionValue(deviceValue, "unknown"),
+    });
+    entries.push({
+      dimension: "browser",
+      value: ensureDimensionValue(browserValue, "unknown"),
+    });
+  }
+
+  if (type === "goal") {
+    const goalName = typeof name === "string" ? name : "";
+    const normalizedGoal = ensureDimensionValue(goalName, "unknown");
+    if (normalizedGoal) {
+      entries.push({ dimension: "goal", value: normalizedGoal });
+    }
+  }
+
+  return entries;
+};
+
+export const upsertDimensionRollups = async ({
+  siteId,
+  timestamp,
+  metrics,
+  dimensions,
+}: {
+  siteId: string;
+  timestamp: Date;
+  metrics: RollupMetrics;
+  dimensions: RollupDimensionEntry[];
+}) => {
+  const normalized = normalizeMetrics(metrics);
+  if (!hasMetrics(normalized) || dimensions.length === 0) {
+    return;
+  }
+
+  const resolvedTimestamp = safeTimestamp(timestamp);
+  const bucketDate = toBucketDate(resolvedTimestamp);
+  const hour = resolvedTimestamp.getUTCHours();
+
+  for (const entry of dimensions) {
+    const dimensionValue = normalizeDimensionValue(entry.value);
+    if (!dimensionValue) {
+      continue;
+    }
+
+    await db
+      .insert(rollupDimensionHourly)
+      .values({
+        id: randomUUID(),
+        siteId,
+        date: bucketDate,
+        hour,
+        dimension: entry.dimension,
+        dimensionValue,
+        ...normalized,
+      })
+      .onConflictDoUpdate({
+        target: [
+          rollupDimensionHourly.siteId,
+          rollupDimensionHourly.date,
+          rollupDimensionHourly.hour,
+          rollupDimensionHourly.dimension,
+          rollupDimensionHourly.dimensionValue,
+        ],
+        set: {
+          visitors: sql`${rollupDimensionHourly.visitors} + ${normalized.visitors}`,
+          sessions: sql`${rollupDimensionHourly.sessions} + ${normalized.sessions}`,
+          pageviews: sql`${rollupDimensionHourly.pageviews} + ${normalized.pageviews}`,
+          goals: sql`${rollupDimensionHourly.goals} + ${normalized.goals}`,
+          revenue: sql`${rollupDimensionHourly.revenue} + ${normalized.revenue}`,
+        },
+      });
+
+    await db
+      .insert(rollupDimensionDaily)
+      .values({
+        id: randomUUID(),
+        siteId,
+        date: bucketDate,
+        dimension: entry.dimension,
+        dimensionValue,
+        ...normalized,
+      })
+      .onConflictDoUpdate({
+        target: [
+          rollupDimensionDaily.siteId,
+          rollupDimensionDaily.date,
+          rollupDimensionDaily.dimension,
+          rollupDimensionDaily.dimensionValue,
+        ],
+        set: {
+          visitors: sql`${rollupDimensionDaily.visitors} + ${normalized.visitors}`,
+          sessions: sql`${rollupDimensionDaily.sessions} + ${normalized.sessions}`,
+          pageviews: sql`${rollupDimensionDaily.pageviews} + ${normalized.pageviews}`,
+          goals: sql`${rollupDimensionDaily.goals} + ${normalized.goals}`,
+          revenue: sql`${rollupDimensionDaily.revenue} + ${normalized.revenue}`,
+        },
+      });
+  }
 };

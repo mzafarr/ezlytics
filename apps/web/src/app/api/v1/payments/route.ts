@@ -5,7 +5,7 @@ import { z } from "zod";
 
 import { verifyApiKey } from "@my-better-t-app/api/api-key";
 import { db, payment, rawEvent } from "@my-better-t-app/db";
-import { metricsForEvent, upsertRollups } from "@/lib/rollups";
+import { extractDimensionRollups, metricsForEvent, upsertDimensionRollups, upsertRollups } from "@/lib/rollups";
 
 const idSchema = z.string().trim().min(1).max(128);
 
@@ -135,19 +135,32 @@ export const POST = async (request: NextRequest) => {
       createdAt,
     });
 
+    const paymentMetrics = metricsForEvent({
+      type: "payment",
+      metadata: paymentMetadata,
+    });
+    const goalMetrics = metricsForEvent({ type: "goal", metadata: goalMetadata });
+
     await upsertRollups({
       siteId: authResult.siteId,
       timestamp: createdAt,
-      metrics: metricsForEvent({
-        type: "payment",
-        metadata: paymentMetadata,
-      }),
+      metrics: paymentMetrics,
     });
 
     await upsertRollups({
       siteId: authResult.siteId,
       timestamp: createdAt,
-      metrics: metricsForEvent({ type: "goal", metadata: goalMetadata }),
+      metrics: goalMetrics,
+    });
+
+    await upsertDimensionRollups({
+      siteId: authResult.siteId,
+      timestamp: createdAt,
+      metrics: goalMetrics,
+      dimensions: extractDimensionRollups({
+        type: "goal",
+        name: getGoalName(parsed.data.amount),
+      }),
     });
   }
 
