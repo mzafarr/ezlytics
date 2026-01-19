@@ -212,6 +212,67 @@ app.post("/stripe/webhook", express.raw({ type: "application/json" }), async (re
 });
 ```
 
+## LemonSqueezy revenue attribution (webhooks)
+
+LemonSqueezy Checkout can pass the analytics cookies into checkout `custom` data so revenue is attributed.
+
+### Next.js App Router webhook
+
+Create a webhook route (example uses `/api/webhooks/lemonsqueezy/[websiteId]` from this repo):
+
+```ts
+export async function POST(
+  request: Request,
+  context: { params: Promise<{ websiteId: string }> },
+) {
+  const { websiteId } = await context.params;
+  const payload = await request.json();
+  const custom =
+    payload?.meta?.custom_data ??
+    payload?.meta?.custom ??
+    payload?.data?.attributes?.custom_data ??
+    payload?.data?.attributes?.custom ??
+    {};
+  const visitorId = custom.datafast_visitor_id;
+  const sessionId = custom.datafast_session_id;
+
+  await fetch(`${process.env.ANALYTICS_ORIGIN}/api/webhooks/lemonsqueezy/${websiteId}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  return Response.json({ ok: true, visitorId, sessionId });
+}
+```
+
+### Generic Node webhook
+
+```ts
+import express from "express";
+
+const app = express();
+
+app.post("/lemonsqueezy/webhook", express.json(), async (req, res) => {
+  const payload = req.body;
+  const custom =
+    payload?.meta?.custom_data ??
+    payload?.meta?.custom ??
+    payload?.data?.attributes?.custom_data ??
+    payload?.data?.attributes?.custom ??
+    {};
+  const { datafast_visitor_id, datafast_session_id } = custom;
+
+  await fetch(`${process.env.ANALYTICS_ORIGIN}/api/webhooks/lemonsqueezy/${process.env.DATAFAST_WEBSITE_ID}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  return res.json({ ok: true, visitorId: datafast_visitor_id, sessionId: datafast_session_id });
+});
+```
+
 ## Available Scripts
 
 - `bun run dev`: Start all applications in development mode
