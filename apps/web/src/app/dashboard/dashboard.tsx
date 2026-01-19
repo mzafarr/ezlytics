@@ -1,7 +1,7 @@
 "use client";
 import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import z from "zod";
 
@@ -12,6 +12,56 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+
+const storageKeyFunnels = "datafast.funnels";
+const createId = () => {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+};
+
+const funnelStepSchema = z.discriminatedUnion("type", [
+  z.object({
+    id: z.string(),
+    name: z.string(),
+    type: z.literal("page"),
+    urlContains: z.string(),
+  }),
+  z.object({
+    id: z.string(),
+    name: z.string(),
+    type: z.literal("goal"),
+    goalName: z.string(),
+  }),
+]);
+
+const funnelSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  steps: z.array(funnelStepSchema),
+});
+
+const funnelsSchema = z.array(funnelSchema);
+
+type Funnel = z.infer<typeof funnelSchema>;
+type FunnelStep = z.infer<typeof funnelStepSchema>;
+
+const createSampleFunnel = (): Funnel => ({
+  id: createId(),
+  name: "Sample funnel",
+  steps: [
+    { id: createId(), name: "Landing page", type: "page", urlContains: "/" },
+    { id: createId(), name: "Pricing page", type: "page", urlContains: "/pricing" },
+    { id: createId(), name: "Signup", type: "goal", goalName: "signup" },
+  ],
+});
+
+const createEmptyFunnel = (): Funnel => ({
+  id: createId(),
+  name: "",
+  steps: [{ id: createId(), name: "", type: "page", urlContains: "/" }],
+});
 
 const analyticsSamples = [
   {
@@ -163,6 +213,10 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
   const [hasCopied, setHasCopied] = useState(false);
   const [hasCopiedKey, setHasCopiedKey] = useState(false);
   const [filters, setFilters] = useState(defaultFilters);
+  const [funnels, setFunnels] = useState<Funnel[]>([]);
+  const [activeFunnelId, setActiveFunnelId] = useState<string | null>(null);
+  const [funnelDraft, setFunnelDraft] = useState<Funnel>(() => createEmptyFunnel());
+  const storageErrorRef = useRef(false);
 
   const createSite = useMutation(
     trpc.sites.create.mutationOptions({
@@ -290,23 +344,6 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
     accumulator[event.goal] = (accumulator[event.goal] ?? 0) + 1;
     return accumulator;
   }, {});
-  const funnelSteps = [
-    {
-      label: "Landing page (/)",
-      count: pageviews.filter((event) => event.path === "/").length,
-      filter: { key: "pagePath" as const, value: "/" },
-    },
-    {
-      label: "Pricing page (/pricing)",
-      count: pageviews.filter((event) => event.path === "/pricing").length,
-      filter: { key: "pagePath" as const, value: "/pricing" },
-    },
-    {
-      label: "Goal: signup",
-      count: goals.filter((event) => event.goal === "signup").length,
-      filter: { key: "goalName" as const, value: "signup" },
-    },
-  ];
   const totalRevenue = filteredEvents.reduce((sum, event) => sum + event.revenue, 0);
   const revenueBySource = filteredEvents.reduce<Record<string, number>>((accumulator, event) => {
     if (!event.revenue) {
@@ -333,6 +370,114 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
 
   const clearFilter = (key: keyof typeof defaultFilters) => {
     setFilters((current) => ({ ...current, [key]: "" }));
+  };
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(storageKeyFunnels);
+      if (stored) {
+        const parsed = funnelsSchema.safeParse(JSON.parse(stored));
+        if (parsed.success && parsed.data.length > 0) {
+          setFunnels(parsed.data);
+          setActiveFunnelId(parsed.data[0].id);
+          setFunnelDraft(parsed.data[0]);
+          return;
+        }
+      }
+    } catch (error) {
+      if (!storageErrorRef.current) {
+        toast.error("Unable to load saved funnels. Starting fresh.");
+        storageErrorRef.current = true;
+      }
+    }
+
+    const sample = createSampleFunnel();
+    setFunnels([sample]);
+    setActiveFunnelId(sample.id);
+    setFunnelDraft(sample);
+  }, []);
+
+  useEffect(() => {
+    if (funnels.length === 0) {
+      return;
+    }
+    try {
+      localStorage.setItem(storageKeyFunnels, JSON.stringify(funnels));
+    } catch (error) {
+      if (!storageErrorRef.current) {
+        toast.error("Unable to save funnels in this browser.");
+        storageErrorRef.current = true;
+      }
+    }
+  }, [funnels]);
+
+  const activeFunnel = useMemo(() => {
+    if (!activeFunnelId) {
+      return null;
+    }
+    return funnels.find((funnel) => funnel.id === activeFunnelId) ?? null;
+  }, [activeFunnelId, funnels]);
+
+  const createStepCount = (step: FunnelStep) => {
+    if (step.type === "page") {
+      const condition = step.urlContains.trim().toLowerCase();
+      if (!condition) {
+        return 0;
+      }
+      return pageviews.filter((event) => event.path.toLowerCase().includes(condition)).length;
+    }
+    const goalCondition = step.goalName.trim().toLowerCase();
+    if (!goalCondition) {
+      return 0;
+    }
+    return goals.filter((event) => event.goal.toLowerCase().includes(goalCondition)).length;
+  };
+
+  const saveFunnelDraft = () => {
+    const name = funnelDraft.name.trim();
+    if (!name) {
+      toast.error("Funnel name is required");
+      return;
+    }
+    if (funnelDraft.steps.length === 0) {
+      toast.error("Add at least one step");
+      return;
+    }
+
+    const updated: Funnel = { ...funnelDraft, name };
+    setFunnels((current) => {
+      const existingIndex = current.findIndex((funnel) => funnel.id === updated.id);
+      if (existingIndex === -1) {
+        return [...current, updated];
+      }
+      return current.map((funnel) => (funnel.id === updated.id ? updated : funnel));
+    });
+    setActiveFunnelId(updated.id);
+    toast.success("Funnel saved");
+  };
+
+  const addDraftStep = () => {
+    setFunnelDraft((current) => ({
+      ...current,
+      steps: [...current.steps, { id: createId(), name: "", type: "page", urlContains: "/" }],
+    }));
+  };
+
+  const removeDraftStep = (stepId: string) => {
+    setFunnelDraft((current) => ({ ...current, steps: current.steps.filter((step) => step.id !== stepId) }));
+  };
+
+  const moveDraftStep = (index: number, direction: -1 | 1) => {
+    setFunnelDraft((current) => {
+      const nextIndex = index + direction;
+      if (nextIndex < 0 || nextIndex >= current.steps.length) {
+        return current;
+      }
+      const nextSteps = [...current.steps];
+      const [moved] = nextSteps.splice(index, 1);
+      nextSteps.splice(nextIndex, 0, moved);
+      return { ...current, steps: nextSteps };
+    });
   };
 
   const handleCopy = async () => {
@@ -754,36 +899,215 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Funnels</CardTitle>
-              <CardDescription>Filter-aware step counts for a sample funnel.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {funnelSteps.map((step) => {
-                const content = (
-                  <>
-                    <span>{step.label}</span>
-                    <span className="font-medium">{step.count}</span>
-                  </>
-                );
-                return step.filter ? (
-                  <button
-                    key={step.label}
-                    type="button"
-                    onClick={() => applyFilter(step.filter.key, step.filter.value)}
-                    className="flex w-full items-center justify-between text-left text-xs transition hover:text-foreground"
-                  >
-                    {content}
-                  </button>
-                ) : (
-                  <div key={step.label} className="flex items-center justify-between text-xs">
-                    {content}
-                  </div>
-                );
-              })}
-            </CardContent>
-          </Card>
+           <Card>
+             <CardHeader>
+               <CardTitle>Funnels</CardTitle>
+               <CardDescription>Define funnels with page URL conditions or goal completions.</CardDescription>
+             </CardHeader>
+             <CardContent className="space-y-4">
+               <div className="space-y-2">
+                 <div className="text-xs font-medium">Saved funnels</div>
+                 {funnels.length === 0 ? (
+                   <p className="text-sm text-muted-foreground">No funnels yet.</p>
+                 ) : (
+                   <div className="flex flex-wrap gap-2">
+                     {funnels.map((funnel) => (
+                       <button
+                         key={funnel.id}
+                         type="button"
+                         onClick={() => {
+                           setActiveFunnelId(funnel.id);
+                           setFunnelDraft(funnel);
+                         }}
+                         className={`rounded-none border px-2 py-1 text-xs transition ${
+                           funnel.id === activeFunnelId
+                             ? "border-foreground text-foreground"
+                             : "text-muted-foreground hover:text-foreground"
+                         }`}
+                       >
+                         {funnel.name}
+                       </button>
+                     ))}
+                     <Button
+                       type="button"
+                       size="xs"
+                       variant="secondary"
+                       onClick={() => {
+                         const fresh = createEmptyFunnel();
+                         setFunnelDraft(fresh);
+                         setActiveFunnelId(null);
+                       }}
+                     >
+                       New funnel
+                     </Button>
+                   </div>
+                 )}
+               </div>
+
+               <div className="space-y-2">
+                 <Label htmlFor="funnel-name">Funnel name</Label>
+                 <Input
+                   id="funnel-name"
+                   placeholder="Signup funnel"
+                   value={funnelDraft.name}
+                   onChange={(event) => setFunnelDraft((current) => ({ ...current, name: event.target.value }))}
+                 />
+               </div>
+
+               <div className="space-y-2">
+                 <div className="text-xs font-medium">Steps</div>
+                 <div className="space-y-3">
+                   {funnelDraft.steps.map((step, index) => (
+                     <div key={step.id} className="space-y-2 border p-3">
+                       <div className="flex flex-wrap gap-2">
+                         <Input
+                           placeholder={`Step ${index + 1} name`}
+                           value={step.name}
+                           onChange={(event) => {
+                             const value = event.target.value;
+                             setFunnelDraft((current) => ({
+                               ...current,
+                               steps: current.steps.map((existing) =>
+                                 existing.id === step.id ? { ...existing, name: value } : existing,
+                               ),
+                             }));
+                           }}
+                         />
+                         <select
+                           className="border-input h-8 w-full rounded-none border bg-transparent px-2.5 text-xs text-foreground"
+                           value={step.type}
+                           onChange={(event) => {
+                       const nextValue = event.target.value;
+                       if (nextValue !== "page" && nextValue !== "goal") {
+                         return;
+                       }
+                       const nextType = nextValue;
+                             setFunnelDraft((current) => ({
+                               ...current,
+                               steps: current.steps.map((existing) => {
+                                 if (existing.id !== step.id) {
+                                   return existing;
+                                 }
+                                 if (nextType === "page") {
+                                   return {
+                                     id: existing.id,
+                                     name: existing.name,
+                                     type: "page",
+                                     urlContains: existing.type === "page" ? existing.urlContains : "/",
+                                   };
+                                 }
+                                 return {
+                                   id: existing.id,
+                                   name: existing.name,
+                                   type: "goal",
+                                   goalName: existing.type === "goal" ? existing.goalName : "",
+                                 };
+                               }),
+                             }));
+                           }}
+                         >
+                           <option value="page">Page URL contains</option>
+                           <option value="goal">Goal completion</option>
+                         </select>
+                         {step.type === "page" ? (
+                           <Input
+                             placeholder="/pricing"
+                             value={step.urlContains}
+                             onChange={(event) => {
+                               const value = event.target.value;
+                               setFunnelDraft((current) => ({
+                                 ...current,
+                                 steps: current.steps.map((existing) =>
+                                   existing.id === step.id && existing.type === "page"
+                                     ? { ...existing, urlContains: value }
+                                     : existing,
+                                 ),
+                               }));
+                             }}
+                           />
+                         ) : (
+                           <Input
+                             placeholder="signup"
+                             value={step.goalName}
+                             onChange={(event) => {
+                               const value = event.target.value;
+                               setFunnelDraft((current) => ({
+                                 ...current,
+                                 steps: current.steps.map((existing) =>
+                                   existing.id === step.id && existing.type === "goal"
+                                     ? { ...existing, goalName: value }
+                                     : existing,
+                                 ),
+                               }));
+                             }}
+                           />
+                         )}
+                       </div>
+                       <div className="flex flex-wrap gap-2">
+                         <Button
+                           type="button"
+                           size="xs"
+                           variant="secondary"
+                           disabled={index === 0}
+                           onClick={() => moveDraftStep(index, -1)}
+                         >
+                           Up
+                         </Button>
+                         <Button
+                           type="button"
+                           size="xs"
+                           variant="secondary"
+                           disabled={index === funnelDraft.steps.length - 1}
+                           onClick={() => moveDraftStep(index, 1)}
+                         >
+                           Down
+                         </Button>
+                         <Button type="button" size="xs" variant="destructive" onClick={() => removeDraftStep(step.id)}>
+                           Remove
+                         </Button>
+                       </div>
+                     </div>
+                   ))}
+                 </div>
+                 <Button type="button" variant="secondary" onClick={addDraftStep}>
+                   Add step
+                 </Button>
+               </div>
+
+               <div className="flex flex-wrap items-center gap-2">
+                 <Button type="button" onClick={saveFunnelDraft}>
+                   Save funnel
+                 </Button>
+                 <span className="text-xs text-muted-foreground">
+                   Saved funnels persist locally in this browser.
+                 </span>
+               </div>
+
+               {activeFunnel && (
+                 <div className="space-y-3">
+                   <div className="text-xs font-medium">Preview (filter-aware)</div>
+                   {activeFunnel.steps.map((step, index) => {
+                     const count = createStepCount(step);
+                     const filterKey = step.type === "page" ? ("pagePath" as const) : ("goalName" as const);
+                     const filterValue = step.type === "page" ? step.urlContains : step.goalName;
+                     return (
+                       <button
+                         key={step.id}
+                         type="button"
+                         onClick={() => applyFilter(filterKey, filterValue)}
+                         className="flex w-full items-center justify-between text-left text-xs transition hover:text-foreground"
+                       >
+                         <span>
+                           {index + 1}. {step.name.trim() || "Untitled step"}
+                         </span>
+                         <span className="font-medium">{count}</span>
+                       </button>
+                     );
+                   })}
+                 </div>
+               )}
+             </CardContent>
+           </Card>
 
           <Card>
             <CardHeader>
