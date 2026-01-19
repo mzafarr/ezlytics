@@ -412,6 +412,27 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
     accumulator[event.path] = (accumulator[event.path] ?? 0) + 1;
     return accumulator;
   }, {});
+  const sessionPages = pageviews.reduce<Record<string, { entry: AnalyticsSample; exit: AnalyticsSample }>>(
+    (accumulator, event) => {
+      const key = `${event.visitorId}-${event.date}`;
+      const existing = accumulator[key];
+      if (!existing) {
+        accumulator[key] = { entry: event, exit: event };
+        return accumulator;
+      }
+      existing.exit = event;
+      return accumulator;
+    },
+    {},
+  );
+  const entryPagesByPath = Object.values(sessionPages).reduce<Record<string, number>>((accumulator, session) => {
+    accumulator[session.entry.path] = (accumulator[session.entry.path] ?? 0) + 1;
+    return accumulator;
+  }, {});
+  const exitPagesByPath = Object.values(sessionPages).reduce<Record<string, number>>((accumulator, session) => {
+    accumulator[session.exit.path] = (accumulator[session.exit.path] ?? 0) + 1;
+    return accumulator;
+  }, {});
   const visitorsById = filteredEvents.reduce<Record<string, VisitorSummary>>((accumulator, event) => {
     const eventDate = new Date(event.date);
     const eventTimestamp = eventDate.getTime();
@@ -1473,8 +1494,8 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
 
           <Card>
             <CardHeader>
-              <CardTitle>Tables</CardTitle>
-              <CardDescription>Top pages and goals based on current filters.</CardDescription>
+              <CardTitle>Pages</CardTitle>
+              <CardDescription>Top pages, entry pages, and exits based on current filters.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
@@ -1484,7 +1505,7 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
                 ) : (
                   Object.entries(pageviewsByPath)
                     .sort((a, b) => b[1] - a[1])
-                    .slice(0, 4)
+                    .slice(0, 5)
                     .map(([path, count]) => (
                       <button
                         key={path}
@@ -1499,21 +1520,45 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
                 )}
               </div>
               <div className="space-y-2">
-                <div className="text-xs font-medium">Goal conversions</div>
-                {Object.keys(goalCounts).length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No goals matched.</p>
+                <div className="text-xs font-medium">Top entry pages</div>
+                {Object.keys(entryPagesByPath).length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No entry pages for the selected filters.</p>
                 ) : (
-                  Object.entries(goalCounts).map(([goal, count]) => (
-                    <button
-                      key={goal}
-                      type="button"
-                      onClick={() => applyFilter("goalName", goal)}
-                      className="flex w-full items-center justify-between text-left text-xs transition hover:text-foreground"
-                    >
-                      <span>{goal}</span>
-                      <span className="font-medium">{count}</span>
-                    </button>
-                  ))
+                  Object.entries(entryPagesByPath)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 5)
+                    .map(([path, count]) => (
+                      <button
+                        key={path}
+                        type="button"
+                        onClick={() => applyFilter("pagePath", path)}
+                        className="flex w-full items-center justify-between text-left text-xs transition hover:text-foreground"
+                      >
+                        <span>{path}</span>
+                        <span className="font-medium">{count}</span>
+                      </button>
+                    ))
+                )}
+              </div>
+              <div className="space-y-2">
+                <div className="text-xs font-medium">Top exit pages</div>
+                {Object.keys(exitPagesByPath).length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No exit pages for the selected filters.</p>
+                ) : (
+                  Object.entries(exitPagesByPath)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 5)
+                    .map(([path, count]) => (
+                      <button
+                        key={path}
+                        type="button"
+                        onClick={() => applyFilter("pagePath", path)}
+                        className="flex w-full items-center justify-between text-left text-xs transition hover:text-foreground"
+                      >
+                        <span>{path}</span>
+                        <span className="font-medium">{count}</span>
+                      </button>
+                    ))
                 )}
               </div>
             </CardContent>
