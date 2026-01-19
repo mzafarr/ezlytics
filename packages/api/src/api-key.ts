@@ -21,6 +21,9 @@ type ApiKeySuccess = {
 
 export type ApiKeyResult = ApiKeyFailure | ApiKeySuccess;
 
+export const buildApiKeyHeader = (apiKey?: string | null) =>
+  apiKey ? `Bearer ${apiKey}` : null;
+
 export const verifyApiKey = async (
   authorizationHeader?: string | null,
 ): Promise<ApiKeyResult> => {

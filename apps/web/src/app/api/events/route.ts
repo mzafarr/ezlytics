@@ -10,6 +10,10 @@ const forwardHeaders = (request: NextRequest, body?: string) => {
   if (contentLength) {
     headers.set("content-length", contentLength);
   }
+  const authorization = request.headers.get("authorization");
+  if (authorization) {
+    headers.set("authorization", authorization);
+  }
   return headers;
 };
 

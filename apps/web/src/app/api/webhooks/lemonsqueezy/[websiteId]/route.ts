@@ -1,8 +1,10 @@
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 
 import { NextRequest, NextResponse } from "next/server";
 
-import { and, db, eq, rawEvent } from "@my-better-t-app/db";
+import { and, db, eq, payment, rawEvent } from "@my-better-t-app/db";
+import { env } from "@my-better-t-app/env/server";
+import { sanitizeMetadataRecord } from "@/lib/metadata-sanitize";
 import { extractDimensionRollups, metricsForEvent, upsertDimensionRollups, upsertRollups } from "@/lib/rollups";
 
 const SUPPORTED_EVENTS = new Set(["order_created", "subscription_payment_success"]);
@@ -59,6 +61,24 @@ const getAttributionSnapshot = async (siteId: string, visitorId: string) => {
 
 const getGoalName = (amount: number | null) => (amount === 0 ? "free_trial" : "payment");
 
+const safeEqual = (left: string, right: string) => {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  if (leftBuffer.length !== rightBuffer.length) {
+    return false;
+  }
+  return timingSafeEqual(leftBuffer, rightBuffer);
+};
+
+const verifyLemonSqueezySignature = (
+  payload: string,
+  signatureHeader: string,
+  secret: string,
+) => {
+  const digest = createHmac("sha256", secret).update(payload, "utf8").digest("hex");
+  return safeEqual(signatureHeader, digest);
+};
+
 export const POST = async (
   request: NextRequest,
   context: { params: Promise<{ websiteId: string }> },
@@ -69,9 +89,25 @@ export const POST = async (
     return NextResponse.json({ error: "Website id is required" }, { status: 400 });
   }
 
+  const webhookSecret = env.LEMONSQUEEZY_WEBHOOK_SECRET;
+  if (!webhookSecret) {
+    return NextResponse.json({ error: "LemonSqueezy webhook secret not configured" }, { status: 500 });
+  }
+
+  const signatureHeader =
+    request.headers.get("x-signature") || request.headers.get("x-lemonsqueezy-signature");
+  if (!signatureHeader) {
+    return NextResponse.json({ error: "LemonSqueezy signature header missing" }, { status: 400 });
+  }
+
+  const body = await request.text();
+  if (!verifyLemonSqueezySignature(body, signatureHeader, webhookSecret)) {
+    return NextResponse.json({ error: "Invalid LemonSqueezy signature" }, { status: 400 });
+  }
+
   let payload: unknown;
   try {
-    payload = await request.json();
+    payload = body ? JSON.parse(body) : {};
   } catch (error) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
@@ -80,12 +116,13 @@ export const POST = async (
     return NextResponse.json({ error: "Invalid event payload" }, { status: 400 });
   }
 
+  const eventId = getString(payload.id);
   const meta = isRecord(payload.meta) ? payload.meta : null;
   const eventName = getString(meta?.event_name ?? payload.event_name);
   const data = isRecord(payload.data) ? payload.data : null;
   const attributes = data && isRecord(data.attributes) ? data.attributes : null;
 
-  if (!eventName || !data || !attributes) {
+  if (!eventId || !eventName || !data || !attributes) {
     return NextResponse.json({ error: "Invalid event payload" }, { status: 400 });
   }
 
@@ -118,6 +155,7 @@ export const POST = async (
   if (!siteRecord) {
     return NextResponse.json({ error: "Site not found" }, { status: 404 });
   }
+
 
   const sessionId = customData ? getString(customData.datafast_session_id) : "";
   const transactionId =
@@ -158,30 +196,68 @@ export const POST = async (
     amount,
     currency: currency || null,
   };
-
-  await db.insert(rawEvent).values({
-    id: randomUUID(),
-    siteId: siteRecord.id,
-    type: "payment",
-    name: "lemonsqueezy_checkout",
-    visitorId,
-    sessionId: sessionId || null,
-    metadata: paymentMetadata,
-  });
-
-  await db.insert(rawEvent).values({
-    id: randomUUID(),
-    siteId: siteRecord.id,
-    type: "goal",
-    name: getGoalName(amount),
-    visitorId,
-    sessionId: sessionId || null,
-    metadata: goalMetadata,
-  });
+  const sanitizedPaymentMetadata = sanitizeMetadataRecord(paymentMetadata) ?? {};
+  const sanitizedGoalMetadata = sanitizeMetadataRecord(goalMetadata) ?? {};
 
   const timestamp = new Date();
-  const paymentMetrics = metricsForEvent({ type: "payment", metadata: paymentMetadata });
-  const goalMetrics = metricsForEvent({ type: "goal", metadata: goalMetadata });
+  const paymentMetrics = metricsForEvent({ type: "payment", metadata: sanitizedPaymentMetadata });
+  const goalMetrics = metricsForEvent({ type: "goal", metadata: sanitizedGoalMetadata });
+
+  const shouldSkip = await db.transaction(async (tx) => {
+    const existing = await tx.query.rawEvent.findFirst({
+      columns: { id: true },
+      where: (events) =>
+        and(eq(events.siteId, siteRecord.id), eq(events.eventId, eventId)),
+    });
+    if (existing) {
+      return true;
+    }
+
+    await tx.insert(rawEvent).values({
+      id: randomUUID(),
+      siteId: siteRecord.id,
+      eventId,
+      type: "payment",
+      name: "lemonsqueezy_checkout",
+      visitorId,
+      sessionId: sessionId || null,
+      metadata: sanitizedPaymentMetadata,
+    });
+
+    await tx.insert(rawEvent).values({
+      id: randomUUID(),
+      siteId: siteRecord.id,
+      eventId,
+      type: "goal",
+      name: getGoalName(amount),
+      visitorId,
+      sessionId: sessionId || null,
+      metadata: sanitizedGoalMetadata,
+    });
+
+    await tx.insert(payment).values({
+      id: randomUUID(),
+      siteId: siteRecord.id,
+      visitorId,
+      eventId,
+      amount: amount ?? 0,
+      currency: currency || "usd",
+      provider: "lemonsqueezy",
+      transactionId: transactionId || eventId,
+      customerId: customerId || null,
+      email: null,
+      name: null,
+      renewal: false,
+      refunded: false,
+      createdAt: timestamp,
+    });
+
+    return false;
+  });
+
+  if (shouldSkip) {
+    return NextResponse.json({ ok: true, deduped: true });
+  }
 
   await upsertRollups({
     siteId: siteRecord.id,

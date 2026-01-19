@@ -28,4 +28,5 @@ test("proxy endpoints expose script and events routes", () => {
 
   const eventsRoute = read("apps/web/src/app/api/events/route.ts");
   assert.ok(eventsRoute.includes("/api/v1/ingest"));
+  assert.ok(eventsRoute.includes("authorization"));
 });

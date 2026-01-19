@@ -55,13 +55,12 @@ const funnelSchema = z.object({
 });
 
 const funnelsSchema = z.array(funnelSchema);
-const exclusionSchema = z.object({
-  pathPatterns: z.string(),
-  ipAddresses: z.string(),
-  countries: z.string(),
-  hostnames: z.string(),
-  excludeSelf: z.boolean(),
-});
+  const exclusionSchema = z.object({
+    pathPatterns: z.string(),
+    countries: z.string(),
+    hostnames: z.string(),
+    excludeSelf: z.boolean(),
+  });
 const revenueProviderSchema = z.object({
   provider: z.enum(["none", "stripe", "lemonsqueezy"]),
   webhookSecret: z.string(),
@@ -166,7 +165,6 @@ const defaultFilters = {
 
 const defaultExclusions = {
   pathPatterns: "",
-  ipAddresses: "",
   countries: "",
   hostnames: "",
   excludeSelf: false,
@@ -193,6 +191,17 @@ const filterLabels = {
   goalName: "Goal name",
 } as const;
 
+const rollupDimensions = [
+  "page",
+  "referrer_domain",
+  "utm_source",
+  "utm_campaign",
+  "country",
+  "device",
+  "browser",
+  "goal",
+] as const;
+
 export default function Dashboard({ session }: { session: typeof authClient.$Infer.Session }) {
   const privateData = useQuery(trpc.privateData.queryOptions());
   const sitesQueryOptions = trpc.sites.list.queryOptions();
@@ -212,6 +221,9 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
   const primaryGoalStorageErrorRef = useRef(false);
   const [currentVisitorId, setCurrentVisitorId] = useState(defaultDemoVisitorId);
   const [primaryGoalName, setPrimaryGoalName] = useState("");
+  const [snapshotUrl, setSnapshotUrl] = useState("");
+  const [snapshotRange, setSnapshotRange] = useState<{ start: string; end: string; label: string } | null>(null);
+  const [hasCopiedSnapshot, setHasCopiedSnapshot] = useState(false);
 
   const createSite = useMutation(
     trpc.sites.create.mutationOptions({
@@ -257,7 +269,7 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
 
   const latestSite = sites.data?.[0];
   const installSnippet = latestSite
-    ? `<script\n  defer\n  data-website-id=\"${latestSite.websiteId}\"\n  data-domain=\"${latestSite.domain}\"\n  src=\"https://your-analytics-domain.com/js/script.js\"\n></script>`
+    ? `<script\n  defer\n  data-website-id=\"${latestSite.websiteId}\"\n  data-domain=\"${latestSite.domain}\"\n  data-api-key=\"${latestSite.apiKey}\"\n  src=\"https://your-analytics-domain.com/js/script.js\"\n></script>`
     : "";
   const apiKey = latestSite?.apiKey ?? "";
   const revenueProviderLabel =
@@ -278,6 +290,20 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
     .map(([key, value]) => ({ key, label: filterLabels[key], value: value.trim() }))
     .filter(({ value }) => value.length > 0);
   const activeFilterCount = activeFilters.length;
+  const rollupInput = latestSite?.id
+    ? {
+        siteId: latestSite.id,
+        startDate: filters.startDate || undefined,
+        endDate: filters.endDate || undefined,
+      }
+    : null;
+  const rollupQuery = useQuery({
+    ...trpc.analytics.rollups.queryOptions(rollupInput ?? { siteId: "" }),
+    enabled: Boolean(rollupInput),
+  });
+  const hasNonDateFilters = activeFilters.some(({ key }) => key !== "startDate" && key !== "endDate");
+  const hasRollupData = Boolean(rollupQuery.data?.daily?.length || rollupQuery.data?.dimensions?.length);
+  const useRollups = hasRollupData && !hasNonDateFilters;
 
   const filteredEvents = useMemo(() => {
     const normalized = {
@@ -297,7 +323,6 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
     const pathMatchers = parseExclusionList(exclusions.pathPatterns).map(createWildcardMatcher);
     const countryMatchers = parseExclusionList(exclusions.countries).map(createWildcardMatcher);
     const hostnameMatchers = parseExclusionList(exclusions.hostnames).map(createWildcardMatcher);
-    const excludedIps = parseExclusionList(exclusions.ipAddresses);
     const excludeSelf = exclusions.excludeSelf && currentVisitorId;
     const startDate = filters.startDate ? new Date(filters.startDate) : null;
     const endDate = filters.endDate ? new Date(filters.endDate) : null;
@@ -310,9 +335,6 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
         return false;
       }
       if (pathMatchers.length > 0 && matchesAny(event.path, pathMatchers)) {
-        return false;
-      }
-      if (excludedIps.length > 0 && excludedIps.includes(event.ip)) {
         return false;
       }
       if (countryMatchers.length > 0 && matchesAny(event.country, countryMatchers)) {
@@ -403,6 +425,73 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
       return true;
     });
   }, [filters, exclusions, currentVisitorId]);
+
+  const rollupSummary = useMemo(() => {
+    const totals = {
+      visitors: 0,
+      sessions: 0,
+      pageviews: 0,
+      goals: 0,
+      revenue: 0,
+    };
+    const series = {
+      pageviews: {} as Record<string, number>,
+      visitors: {} as Record<string, number>,
+      revenue: {} as Record<string, number>,
+    };
+    const dimensions = rollupDimensions.reduce(
+      (accumulator, dimension) => {
+        accumulator[dimension] = {
+          pageviews: {} as Record<string, number>,
+          goals: {} as Record<string, number>,
+          revenue: {} as Record<string, number>,
+        };
+        return accumulator;
+      },
+      {} as Record<
+        (typeof rollupDimensions)[number],
+        { pageviews: Record<string, number>; goals: Record<string, number>; revenue: Record<string, number> }
+      >,
+    );
+    const dimensionFallbacks: Record<(typeof rollupDimensions)[number], string> = {
+      page: "/",
+      referrer_domain: directReferrerLabel,
+      utm_source: notSetLabel,
+      utm_campaign: notSetLabel,
+      country: "unknown",
+      device: "unknown",
+      browser: "unknown",
+      goal: "unknown",
+    };
+    const toDateKey = (value: Date | string) =>
+      typeof value === "string" ? value : value.toISOString().slice(0, 10);
+
+    for (const entry of rollupQuery.data?.daily ?? []) {
+      const dateKey = toDateKey(entry.date);
+      totals.visitors += entry.visitors;
+      totals.sessions += entry.sessions;
+      totals.pageviews += entry.pageviews;
+      totals.goals += entry.goals;
+      totals.revenue += entry.revenue;
+      series.pageviews[dateKey] = (series.pageviews[dateKey] ?? 0) + entry.pageviews;
+      series.visitors[dateKey] = (series.visitors[dateKey] ?? 0) + entry.visitors;
+      series.revenue[dateKey] = (series.revenue[dateKey] ?? 0) + entry.revenue;
+    }
+
+    for (const entry of rollupQuery.data?.dimensions ?? []) {
+      if (!rollupDimensions.includes(entry.dimension as (typeof rollupDimensions)[number])) {
+        continue;
+      }
+      const dimension = entry.dimension as (typeof rollupDimensions)[number];
+      const label = entry.dimensionValue.trim() || dimensionFallbacks[dimension];
+      const bucket = dimensions[dimension];
+      bucket.pageviews[label] = (bucket.pageviews[label] ?? 0) + entry.pageviews;
+      bucket.goals[label] = (bucket.goals[label] ?? 0) + entry.goals;
+      bucket.revenue[label] = (bucket.revenue[label] ?? 0) + entry.revenue;
+    }
+
+    return { totals, series, dimensions };
+  }, [rollupQuery.data]);
 
   const pageviews = filteredEvents.filter((event) => event.eventType === "pageview");
   const goals = filteredEvents.filter((event) => event.eventType === "goal");
@@ -498,12 +587,19 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
     return accumulator;
   }, {});
   const visitorsList = Object.values(visitorsById).sort((a, b) => b.lastSeenAt - a.lastSeenAt);
-  const visitorCountLabel = `${visitorsList.length} visitor${visitorsList.length === 1 ? "" : "s"}`;
   const sessionKeys = pageviews.reduce((accumulator, event) => {
     accumulator.add(`${event.visitorId}-${event.date}`);
     return accumulator;
   }, new Set<string>());
   const sessionCount = sessionKeys.size;
+  const totalRevenue = useRollups
+    ? rollupSummary.totals.revenue
+    : filteredEvents.reduce((sum, event) => sum + event.revenue, 0);
+  const visitorsCount = useRollups ? rollupSummary.totals.visitors : visitorsList.length;
+  const sessionTotal = useRollups ? rollupSummary.totals.sessions : sessionCount;
+  const pageviewTotal = useRollups ? rollupSummary.totals.pageviews : pageviews.length;
+  const revenuePerVisitor = visitorsCount === 0 ? 0 : totalRevenue / visitorsCount;
+  const visitorCountLabel = `${visitorsCount} visitor${visitorsCount === 1 ? "" : "s"}`;
   const goalConversions = goals.filter((event) => event.goal);
   const conversionCount = goalConversions.length;
   const conversionRate = sessionCount === 0 ? 0 : (conversionCount / sessionCount) * 100;
@@ -529,20 +625,43 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
     accumulator[goalName] = existing;
     return accumulator;
   }, {});
-  const goalSummaries: GoalSummary[] = Object.entries(goalSummaryByName)
-    .map(([name, summary]) => ({
+  const rollupGoalSummaries: GoalSummary[] = Object.entries(rollupSummary.dimensions.goal.goals)
+    .map(([name, total]) => ({
       name,
-      total: summary.total,
-      unique: summary.visitors.size,
-      conversionRate: sessionCount === 0 ? 0 : (summary.total / sessionCount) * 100,
-      sources: summary.sources,
-      pages: summary.pages,
+      total,
+      unique: total,
+      conversionRate: rollupSummary.totals.sessions === 0 ? 0 : (total / rollupSummary.totals.sessions) * 100,
+      sources: {},
+      pages: {},
     }))
     .sort((a, b) => b.total - a.total);
+  const goalSummaries: GoalSummary[] = useRollups
+    ? rollupGoalSummaries
+    : Object.entries(goalSummaryByName)
+        .map(([name, summary]) => ({
+          name,
+          total: summary.total,
+          unique: summary.visitors.size,
+          conversionRate: sessionCount === 0 ? 0 : (summary.total / sessionCount) * 100,
+          sources: summary.sources,
+          pages: summary.pages,
+        }))
+        .sort((a, b) => b.total - a.total);
   const primaryGoal = goalSummaries.find((goal) => goal.name === primaryGoalName) ?? null;
   const primaryGoalLabel = primaryGoal?.name || primaryGoalName.trim() || "All goals";
-  const primaryConversionCount = primaryGoal ? primaryGoal.total : primaryGoalName ? 0 : conversionCount;
-  const primaryConversionRate = primaryGoal ? primaryGoal.conversionRate : primaryGoalName ? 0 : conversionRate;
+  const primaryConversionCount = primaryGoal
+    ? primaryGoal.total
+    : primaryGoalName
+      ? 0
+      : useRollups
+        ? rollupSummary.totals.goals
+        : conversionCount;
+  const baseConversionRate = useRollups
+    ? rollupSummary.totals.sessions === 0
+      ? 0
+      : (rollupSummary.totals.goals / rollupSummary.totals.sessions) * 100
+    : conversionRate;
+  const primaryConversionRate = primaryGoal ? primaryGoal.conversionRate : primaryGoalName ? 0 : baseConversionRate;
   const breakdownGoal = primaryGoalName ? primaryGoal : (goalSummaries[0] ?? null);
   const goalSourceBreakdown = breakdownGoal
     ? Object.entries(breakdownGoal.sources)
@@ -554,31 +673,49 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
         .sort((a, b) => b[1] - a[1])
         .slice(0, 5)
     : [];
-  const totalRevenue = filteredEvents.reduce((sum, event) => sum + event.revenue, 0);
-  const revenuePerVisitor = visitorsList.length === 0 ? 0 : totalRevenue / visitorsList.length;
-  const revenueByDate = filteredEvents.reduce<Record<string, number>>((accumulator, event) => {
-    if (!event.revenue) {
-      return accumulator;
-    }
-    accumulator[event.date] = (accumulator[event.date] ?? 0) + event.revenue;
-    return accumulator;
-  }, {});
-  const revenueBySource = filteredEvents.reduce<Record<string, number>>((accumulator, event) => {
-    if (!event.revenue) {
-      return accumulator;
-    }
-    accumulator[event.source] = (accumulator[event.source] ?? 0) + event.revenue;
-    return accumulator;
-  }, {});
+  const revenueByDate = useRollups
+    ? rollupSummary.series.revenue
+    : filteredEvents.reduce<Record<string, number>>((accumulator, event) => {
+        if (!event.revenue) {
+          return accumulator;
+        }
+        accumulator[event.date] = (accumulator[event.date] ?? 0) + event.revenue;
+        return accumulator;
+      }, {});
+  const revenueBySource = useRollups
+    ? rollupSummary.dimensions.utm_source.revenue
+    : filteredEvents.reduce<Record<string, number>>((accumulator, event) => {
+        if (!event.revenue) {
+          return accumulator;
+        }
+        accumulator[event.source] = (accumulator[event.source] ?? 0) + event.revenue;
+        return accumulator;
+      }, {});
   const topRevenueSources = Object.entries(revenueBySource).sort((a, b) => b[1] - a[1]).slice(0, 3);
-  const referrerCounts = buildDimensionCounts(pageviews, "referrer", directReferrerLabel);
-  const sourceCounts = buildDimensionCounts(pageviews, "source", notSetLabel);
+  const referrerCounts = useRollups
+    ? rollupSummary.dimensions.referrer_domain.pageviews
+    : buildDimensionCounts(pageviews, "referrer", directReferrerLabel);
+  const sourceCounts = useRollups
+    ? rollupSummary.dimensions.utm_source.pageviews
+    : buildDimensionCounts(pageviews, "source", notSetLabel);
   const mediumCounts = buildDimensionCounts(pageviews, "medium", notSetLabel);
-  const campaignCounts = buildDimensionCounts(pageviews, "campaign", notSetLabel);
+  const campaignCounts = useRollups
+    ? rollupSummary.dimensions.utm_campaign.pageviews
+    : buildDimensionCounts(pageviews, "campaign", notSetLabel);
   const contentCounts = buildDimensionCounts(pageviews, "content", notSetLabel);
   const termCounts = buildDimensionCounts(pageviews, "term", notSetLabel);
+  const pageviewsByPathDisplay = useRollups ? rollupSummary.dimensions.page.pageviews : pageviewsByPath;
+  const entryPagesByPathDisplay = useRollups ? rollupSummary.dimensions.page.pageviews : entryPagesByPath;
+  const exitPagesByPathDisplay = useRollups ? rollupSummary.dimensions.page.pageviews : exitPagesByPath;
+  const visitorsByDateDisplay = useRollups ? rollupSummary.series.visitors : visitorsByDate;
+  const pageviewsByDateDisplay = useRollups ? rollupSummary.series.pageviews : pageviewsByDate;
   const chartSeries =
-    chartMetric === "pageviews" ? pageviewsByDate : chartMetric === "visitors" ? visitorsByDate : revenueByDate;
+    chartMetric === "pageviews"
+      ? pageviewsByDateDisplay
+      : chartMetric === "visitors"
+        ? visitorsByDateDisplay
+        : revenueByDate;
+  const rollupModeLabel = useRollups ? "Rollups" : "Raw events";
 
   const applyFilter = (key: keyof typeof defaultFilters, value: string) => {
     if (!value.trim()) {
@@ -965,6 +1102,53 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
       toast.error("Failed to copy API key");
     }
   };
+  const handleGenerateSnapshot = () => {
+    const today = new Date();
+    const normalizeDate = (value: Date) => value.toISOString().slice(0, 10);
+    const parseDate = (value: string) => {
+      const parsed = new Date(value);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    };
+    const filterStart = filters.startDate ? parseDate(filters.startDate) : null;
+    const filterEnd = filters.endDate ? parseDate(filters.endDate) : null;
+    const endDate = filterEnd ?? today;
+    const startDate = filterStart ?? new Date(endDate);
+    if (!filterStart) {
+      startDate.setDate(endDate.getDate() - 6);
+    }
+    const start = normalizeDate(startDate);
+    const end = normalizeDate(endDate);
+    const label = filterStart || filterEnd ? "Custom range" : "Last 7 days";
+    const snapshotId = createId();
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+    setSnapshotUrl(`${origin}/share/${snapshotId}?start=${start}&end=${end}`);
+    setSnapshotRange({ start, end, label });
+  };
+  const handleCopySnapshot = async () => {
+    if (!snapshotUrl) {
+      return;
+    }
+
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(snapshotUrl);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = snapshotUrl;
+        textarea.style.position = "fixed";
+        textarea.style.left = "-9999px";
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      setHasCopiedSnapshot(true);
+      toast.success("Snapshot link copied to clipboard");
+      setTimeout(() => setHasCopiedSnapshot(false), 2000);
+    } catch {
+      toast.error("Failed to copy snapshot link");
+    }
+  };
 
   return (
     <>
@@ -1104,7 +1288,8 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
                 />
               </div>
             </div>
-            <div className="text-xs text-muted-foreground">
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+              <span>{rollupModeLabel} mode</span>
               {activeFilterCount === 0
                 ? "No filters applied."
                 : `${activeFilterCount} filter${activeFilterCount === 1 ? "" : "s"} applied.`}
@@ -1287,8 +1472,39 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
 
           <Card>
             <CardHeader>
+              <CardTitle>Shareable insight card</CardTitle>
+              <CardDescription>Generate a read-only snapshot link for quick sharing.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {snapshotUrl ? (
+                <>
+                  {snapshotRange && (
+                    <div className="text-xs text-muted-foreground">
+                      {snapshotRange.label} · {snapshotRange.start} → {snapshotRange.end}
+                    </div>
+                  )}
+                  <Input className="font-mono text-xs" readOnly value={snapshotUrl} aria-label="Snapshot link" />
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Create a link to share top sources and revenue per visitor.
+                </p>
+              )}
+            </CardContent>
+            <CardFooter className="flex flex-wrap gap-2">
+              <Button type="button" onClick={handleGenerateSnapshot}>
+                Generate link
+              </Button>
+              <Button type="button" variant="secondary" onClick={handleCopySnapshot} disabled={!snapshotUrl}>
+                {hasCopiedSnapshot ? "Copied!" : "Copy link"}
+              </Button>
+            </CardFooter>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <CardTitle>Exclusions</CardTitle>
-              <CardDescription>Exclude paths, IPs, countries, hostnames, and your own visits.</CardDescription>
+              <CardDescription>Exclude paths, countries, hostnames, and your own visits.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-2">
@@ -1303,17 +1519,6 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
                   }
                 />
                 <p className="text-xs text-muted-foreground">One per line or comma-separated, supports * wildcard.</p>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="exclude-ips">IP addresses</Label>
-                <Input
-                  id="exclude-ips"
-                  placeholder="203.0.113.11, 198.51.100.24"
-                  value={exclusions.ipAddresses}
-                  onChange={(event) =>
-                    setExclusions((current) => ({ ...current, ipAddresses: event.target.value }))
-                  }
-                />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="exclude-countries">Countries</Label>
@@ -1450,15 +1655,15 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="rounded-md border px-3 py-2 text-xs">
                   <div className="text-muted-foreground">Visitors</div>
-                  <div className="text-lg font-semibold">{visitorsList.length}</div>
+                  <div className="text-lg font-semibold">{visitorsCount}</div>
                 </div>
                 <div className="rounded-md border px-3 py-2 text-xs">
                   <div className="text-muted-foreground">Sessions</div>
-                  <div className="text-lg font-semibold">{sessionCount}</div>
+                  <div className="text-lg font-semibold">{sessionTotal}</div>
                 </div>
                 <div className="rounded-md border px-3 py-2 text-xs">
                   <div className="text-muted-foreground">Pageviews</div>
-                  <div className="text-lg font-semibold">{pageviews.length}</div>
+                  <div className="text-lg font-semibold">{pageviewTotal}</div>
                 </div>
                 <div className="rounded-md border px-3 py-2 text-xs">
                   <div className="text-muted-foreground">Conversions</div>
@@ -1533,8 +1738,12 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
                 <span>{visitorCountLabel}</span>
                 <span>Sorted by most recent</span>
               </div>
-              {visitorsList.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No visitors match the current filters.</p>
+              {visitorsList.length === 0 || useRollups ? (
+                <p className="text-sm text-muted-foreground">
+              {useRollups
+                ? "Use raw-event filters for visitor-level detail."
+                : "No visitors match the current filters."}
+                </p>
               ) : (
                 <div className="space-y-2">
                   {visitorsList.map((visitor) => (
@@ -1593,10 +1802,10 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
             <CardContent className="space-y-4">
               <div className="space-y-2">
                 <div className="text-xs font-medium">Top pages</div>
-                {Object.keys(pageviewsByPath).length === 0 ? (
+                {Object.keys(pageviewsByPathDisplay).length === 0 ? (
                   <p className="text-sm text-muted-foreground">No pageviews to summarize.</p>
                 ) : (
-                  Object.entries(pageviewsByPath)
+                  Object.entries(pageviewsByPathDisplay)
                     .sort((a, b) => b[1] - a[1])
                     .slice(0, 5)
                     .map(([path, count]) => (
@@ -1614,10 +1823,10 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
               </div>
               <div className="space-y-2">
                 <div className="text-xs font-medium">Top entry pages</div>
-                {Object.keys(entryPagesByPath).length === 0 ? (
+                {Object.keys(entryPagesByPathDisplay).length === 0 ? (
                   <p className="text-sm text-muted-foreground">No entry pages for the selected filters.</p>
                 ) : (
-                  Object.entries(entryPagesByPath)
+                  Object.entries(entryPagesByPathDisplay)
                     .sort((a, b) => b[1] - a[1])
                     .slice(0, 5)
                     .map(([path, count]) => (
@@ -1635,10 +1844,10 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
               </div>
               <div className="space-y-2">
                 <div className="text-xs font-medium">Top exit pages</div>
-                {Object.keys(exitPagesByPath).length === 0 ? (
+                {Object.keys(exitPagesByPathDisplay).length === 0 ? (
                   <p className="text-sm text-muted-foreground">No exit pages for the selected filters.</p>
                 ) : (
-                  Object.entries(exitPagesByPath)
+                  Object.entries(exitPagesByPathDisplay)
                     .sort((a, b) => b[1] - a[1])
                     .slice(0, 5)
                     .map(([path, count]) => (

@@ -73,6 +73,7 @@ To reduce adblocker impact, proxy the script and events endpoints on your own do
   defer
   data-website-id="dfid_xxx"
   data-domain="example.com"
+  data-api-key="key_xxx"
   data-api-url="/api/events"
   src="https://your-site.com/js/script.js"
 ></script>
@@ -111,7 +112,10 @@ export async function POST(request: Request) {
   const body = await request.text();
   const response = await fetch(`${ANALYTICS_ORIGIN}/api/v1/ingest`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      authorization: request.headers.get("authorization") ?? "",
+    },
     body,
   });
   const responseBody = await response.text();
@@ -137,6 +141,7 @@ The ingestion endpoint at `/api/v1/ingest` enforces a strict allowlist and caps.
 - Required fields: `type`, `websiteId`, `domain`, `path`, `visitorId`
 - `goal` events must include `name`
 - `identify` events must include `metadata.user_id`
+- Authentication: `Authorization: Bearer <api_key>` required and must match the event `websiteId`
 - Max metadata entries: 12
 - Metadata key max length: 64
 - Metadata value max length: 255

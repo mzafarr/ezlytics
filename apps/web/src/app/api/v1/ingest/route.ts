@@ -3,8 +3,10 @@ import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
+import { buildApiKeyHeader, verifyApiKey } from "@my-better-t-app/api/api-key";
 import { db, rawEvent } from "@my-better-t-app/db";
 import { env } from "@my-better-t-app/env/server";
+import { sanitizeMetadataRecord } from "@/lib/metadata-sanitize";
 import { extractDimensionRollups, metricsForEvent, upsertDimensionRollups, upsertRollups } from "@/lib/rollups";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
@@ -418,6 +420,17 @@ export const POST = async (request: NextRequest) => {
   }
 
   const payload = parsed.data;
+  const headerAuth = request.headers.get("authorization");
+  const queryKey = new URL(request.url).searchParams.get("api_key");
+  const authResult = await verifyApiKey(headerAuth || buildApiKeyHeader(queryKey));
+  if (!authResult.ok) {
+    return NextResponse.json({ error: authResult.error }, { status: 401 });
+  }
+
+  if (authResult.siteId !== payload.websiteId) {
+    return NextResponse.json({ error: "API key does not match website id" }, { status: 403 });
+  }
+
   if (payload.type === "identify") {
     const identifyValidation = identifyMetadataSchema.safeParse(payload.metadata ?? {});
     if (!identifyValidation.success) {
@@ -431,18 +444,9 @@ export const POST = async (request: NextRequest) => {
       );
     }
   }
-  const siteRecord = await db.query.site.findFirst({
-    columns: { id: true },
-    where: (sites, { eq }) => eq(sites.websiteId, payload.websiteId),
-  });
-
-  if (!siteRecord) {
-    return NextResponse.json({ error: "Site not found" }, { status: 404 });
-  }
-
   const rateLimit = checkRateLimit({
     ip: getClientIp(request),
-    siteId: siteRecord.id,
+    siteId: authResult.siteId,
     scope: "ingest",
   });
   if (!rateLimit.ok) {
@@ -465,13 +469,13 @@ export const POST = async (request: NextRequest) => {
   };
 
   const createdAt = payload.timestamp ?? new Date();
-  const metadata = payload.metadata ?? null;
+  const metadata = sanitizeMetadataRecord(payload.metadata ?? null, MAX_METADATA_VALUE_LENGTH);
   const eventId = payload.eventId ?? null;
 
   try {
     await db.insert(rawEvent).values({
       id: randomUUID(),
-      siteId: siteRecord.id,
+      siteId: authResult.siteId,
       eventId,
       type: payload.type,
       name: payload.name ?? null,
@@ -495,13 +499,13 @@ export const POST = async (request: NextRequest) => {
   });
 
   await upsertRollups({
-    siteId: siteRecord.id,
+    siteId: authResult.siteId,
     timestamp: createdAt,
     metrics,
   });
 
   await upsertDimensionRollups({
-    siteId: siteRecord.id,
+    siteId: authResult.siteId,
     timestamp: createdAt,
     metrics,
     dimensions: extractDimensionRollups({

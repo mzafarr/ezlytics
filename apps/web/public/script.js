@@ -22,6 +22,7 @@
     script && script.hasAttribute("data-allow-file-protocol");
   var websiteId = script ? script.getAttribute("data-website-id") : "";
   var domain = script ? script.getAttribute("data-domain") : "";
+  var apiKey = script ? script.getAttribute("data-api-key") : "";
   var allowedHostnamesRaw = script
     ? script.getAttribute("data-allowed-hostnames")
     : "";
@@ -36,9 +37,9 @@
     }
   }
 
-  if (!websiteId || !domain) {
+  if (!websiteId || !domain || !apiKey) {
     warn(
-      "Tracking disabled: missing required data-website-id or data-domain on the script tag."
+      "Tracking disabled: missing required data-website-id, data-domain, or data-api-key on the script tag."
     );
     return;
   }
@@ -516,7 +517,12 @@
     if (typeof navigator !== "undefined" && navigator.sendBeacon) {
       try {
         var blob = new Blob([body], { type: "application/json" });
-        if (navigator.sendBeacon(EVENT_ENDPOINT, blob)) {
+        var beaconUrl = EVENT_ENDPOINT;
+        if (apiKey) {
+          var joiner = beaconUrl.indexOf("?") === -1 ? "?" : "&";
+          beaconUrl = beaconUrl + joiner + "api_key=" + encodeURIComponent(apiKey);
+        }
+        if (navigator.sendBeacon(beaconUrl, blob)) {
           return;
         }
       } catch (error) {
@@ -527,7 +533,10 @@
       try {
         fetch(EVENT_ENDPOINT, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: "Bearer " + apiKey,
+          },
           body: body,
           keepalive: options && options.keepalive === true,
         })
