@@ -6,6 +6,7 @@ import { z } from "zod";
 import { db, rawEvent } from "@my-better-t-app/db";
 import { env } from "@my-better-t-app/env/server";
 import { extractDimensionRollups, metricsForEvent, upsertDimensionRollups, upsertRollups } from "@/lib/rollups";
+import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
 const DEFAULT_MAX_PAYLOAD_BYTES = 32 * 1024;
 const MAX_PAYLOAD_BYTES = env.INGEST_MAX_PAYLOAD_BYTES ?? DEFAULT_MAX_PAYLOAD_BYTES;
@@ -25,6 +26,7 @@ const ALLOWED_TOP_LEVEL_KEYS = new Set([
   "timestamp",
   "visitorId",
   "sessionId",
+  "eventId",
   "metadata",
   "utm_source",
   "utm_medium",
@@ -135,6 +137,7 @@ const payloadSchema = z
     timestamp: timestampSchema.optional(),
     visitorId: idSchema,
     sessionId: idSchema.optional(),
+    eventId: idSchema.optional(),
     metadata: metadataSchema,
     utm_source: trackingValueSchema.optional(),
     utm_medium: trackingValueSchema.optional(),
@@ -185,6 +188,14 @@ const identifyMetadataSchema = metadataSchema.superRefine((value, ctx) => {
     });
   }
 });
+
+const isUniqueViolation = (error: unknown) =>
+  Boolean(
+    error &&
+      typeof error === "object" &&
+      "code" in error &&
+      (error as { code?: string }).code === "23505",
+  );
 
 const ALLOWLIST_DOCS = {
   maxPayloadBytes: MAX_PAYLOAD_BYTES,
@@ -331,6 +342,17 @@ const resolveVersion = (payload: Record<string, unknown>) => {
   return parsed;
 };
 
+const rateLimitResponse = (retryAfter: number) =>
+  NextResponse.json(
+    { error: "Rate limit exceeded", retry_after: retryAfter },
+    {
+      status: 429,
+      headers: {
+        "Retry-After": retryAfter.toString(),
+      },
+    },
+  );
+
 export const POST = async (request: NextRequest) => {
   const lengthHeader = request.headers.get("content-length");
   if (lengthHeader) {
@@ -418,6 +440,15 @@ export const POST = async (request: NextRequest) => {
     return NextResponse.json({ error: "Site not found" }, { status: 404 });
   }
 
+  const rateLimit = checkRateLimit({
+    ip: getClientIp(request),
+    siteId: siteRecord.id,
+    scope: "ingest",
+  });
+  if (!rateLimit.ok) {
+    return rateLimitResponse(rateLimit.retryAfter);
+  }
+
   const { device, browser, os } = parseUserAgent(request.headers.get("user-agent"));
   const country = normalizeCountry(request.headers.get("x-vercel-ip-country"));
 
@@ -435,18 +466,27 @@ export const POST = async (request: NextRequest) => {
 
   const createdAt = payload.timestamp ?? new Date();
   const metadata = payload.metadata ?? null;
+  const eventId = payload.eventId ?? null;
 
-  await db.insert(rawEvent).values({
-    id: randomUUID(),
-    siteId: siteRecord.id,
-    type: payload.type,
-    name: payload.name ?? null,
-    visitorId: payload.visitorId,
-    sessionId: payload.sessionId ?? null,
-    metadata,
-    normalized,
-    createdAt,
-  });
+  try {
+    await db.insert(rawEvent).values({
+      id: randomUUID(),
+      siteId: siteRecord.id,
+      eventId,
+      type: payload.type,
+      name: payload.name ?? null,
+      visitorId: payload.visitorId,
+      sessionId: payload.sessionId ?? null,
+      metadata,
+      normalized,
+      createdAt,
+    });
+  } catch (error) {
+    if (eventId && isUniqueViolation(error)) {
+      return NextResponse.json({ ok: true, deduped: true });
+    }
+    throw error;
+  }
 
   const metrics = metricsForEvent({
     type: payload.type,

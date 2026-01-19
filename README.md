@@ -132,7 +132,7 @@ The ingestion endpoint at `/api/v1/ingest` enforces a strict allowlist and caps.
 - Max payload size: 32 KB default (override with `INGEST_MAX_PAYLOAD_BYTES`)
 - Supported schema versions: `v=1` (default when omitted)
 - Allowed top-level keys:
-  - `v`, `type`, `name`, `websiteId`, `domain`, `path`, `referrer`, `timestamp`, `visitorId`, `sessionId`, `metadata`
+  - `v`, `type`, `name`, `websiteId`, `domain`, `path`, `referrer`, `timestamp`, `visitorId`, `sessionId`, `eventId`, `metadata`
   - `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`, `source`, `via`, `ref`
 - Required fields: `type`, `websiteId`, `domain`, `path`, `visitorId`
 - `goal` events must include `name`
@@ -140,6 +140,21 @@ The ingestion endpoint at `/api/v1/ingest` enforces a strict allowlist and caps.
 - Max metadata entries: 12
 - Metadata key max length: 64
 - Metadata value max length: 255
+
+## Privacy and cookies
+
+my-better-t-app does not store full IP addresses in analytics tables. Incoming requests are used to derive coarse country-level data only, and any metadata values are sanitized to strip scripts/HTML.
+
+### Cookies used
+
+The tracking script sets first-party cookies to recognize returning visitors and sessions:
+
+- `datafast_visitor_id`: persistent visitor identifier (expires after 1 year)
+- `datafast_session_id`: session identifier (expires after 30 minutes of inactivity)
+
+### Suggested cookie banner wording
+
+> We use privacy-friendly analytics cookies to understand website usage. These cookies set anonymous visitor and session IDs and do not store full IP addresses. You can opt out via your browser’s Do Not Track setting.
 
 ## Stripe Checkout revenue attribution (webhooks)
 

@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm";
-import { index, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { index, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 import { site } from "./site";
 
@@ -10,6 +10,7 @@ export const rawEvent = pgTable(
     siteId: text("site_id")
       .notNull()
       .references(() => site.id, { onDelete: "cascade" }),
+    eventId: text("event_id"),
     type: text("type").notNull(),
     name: text("name"),
     visitorId: text("visitor_id").notNull(),
@@ -22,6 +23,8 @@ export const rawEvent = pgTable(
     index("raw_event_siteId_idx").on(table.siteId),
     index("raw_event_visitorId_idx").on(table.visitorId),
     index("raw_event_type_idx").on(table.type),
+    index("raw_event_eventId_idx").on(table.eventId),
+    uniqueIndex("raw_event_site_eventId_idx").on(table.siteId, table.eventId),
   ],
 );
 

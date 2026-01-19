@@ -243,6 +243,29 @@
   }
   window.datafast.config = config;
 
+  function isDoNotTrackEnabled() {
+    if (typeof navigator === "undefined") {
+      return false;
+    }
+    var dnt =
+      navigator.doNotTrack ||
+      (typeof window !== "undefined" && window.doNotTrack) ||
+      navigator.msDoNotTrack;
+    if (!dnt) {
+      return false;
+    }
+    var value = String(dnt).toLowerCase();
+    return value === "1" || value === "yes" || value === "true";
+  }
+
+  if (isDoNotTrackEnabled()) {
+    warn("Do Not Track is enabled: tracking disabled.");
+    window.datafast = function () {};
+    window.datafast.q = [];
+    window.datafast.config = config;
+    return;
+  }
+
   var VISITOR_COOKIE = "datafast_visitor_id";
   var SESSION_COOKIE = "datafast_session_id";
   var VISITOR_TTL = 60 * 60 * 24 * 365;
@@ -261,6 +284,11 @@
     "utm_content",
   ];
   var lastTracking = null;
+  var RETRY_LIMIT = 3;
+  var RETRY_BASE_DELAY = 1000;
+  var RETRY_MAX_DELAY = 15000;
+  var retryQueue = [];
+  var retryTimer = null;
 
   function isSecureContext() {
     return typeof location !== "undefined" && location.protocol === "https:";
@@ -479,7 +507,40 @@
     return sessionId;
   }
 
-  function sendEvent(payload, options) {
+  function scheduleRetry() {
+    if (retryTimer || retryQueue.length === 0) {
+      return;
+    }
+    var entry = retryQueue[0];
+    var delay = RETRY_BASE_DELAY * Math.pow(2, entry.attempt - 1);
+    if (delay > RETRY_MAX_DELAY) {
+      delay = RETRY_MAX_DELAY;
+    }
+    retryTimer = setTimeout(function () {
+      retryTimer = null;
+      var next = retryQueue.shift();
+      if (next) {
+        sendEvent(next.payload, next.options, next.attempt);
+      }
+      scheduleRetry();
+    }, delay);
+  }
+
+  function queueRetry(payload, options, attempt) {
+    if (attempt >= RETRY_LIMIT) {
+      warn("Event dropped after retry attempts.");
+      return;
+    }
+    retryQueue.push({
+      payload: payload,
+      options: options,
+      attempt: attempt + 1,
+    });
+    scheduleRetry();
+  }
+
+  function sendEvent(payload, options, attempt) {
+    var attemptCount = attempt || 0;
     var body = JSON.stringify(payload);
     if (typeof navigator !== "undefined" && navigator.sendBeacon) {
       try {
@@ -498,11 +559,22 @@
           headers: { "Content-Type": "application/json" },
           body: body,
           keepalive: options && options.keepalive === true,
-        });
+        })
+          .then(function (response) {
+            if (!response || !response.ok) {
+              queueRetry(payload, options, attemptCount);
+            }
+          })
+          .catch(function () {
+            queueRetry(payload, options, attemptCount);
+          });
+        return;
       } catch (error) {
-        // ignore network errors
+        queueRetry(payload, options, attemptCount);
       }
+      return;
     }
+    queueRetry(payload, options, attemptCount);
   }
 
   function normalizeGoalName(value) {
@@ -758,6 +830,7 @@
       type: "goal",
       name: name,
       websiteId: websiteId,
+      eventId: generateId(),
       domain: domain,
       path: getCurrentPath(),
       referrer: document.referrer || "",
@@ -787,6 +860,7 @@
     var identifyPayload = {
       type: "identify",
       websiteId: websiteId,
+      eventId: generateId(),
       domain: domain,
       path: getCurrentPath(),
       referrer: document.referrer || "",
@@ -845,6 +919,7 @@
     var payload = {
       type: "pageview",
       websiteId: websiteId,
+      eventId: generateId(),
       domain: domain,
       path: getCurrentPath(),
       referrer: referrerOverride || document.referrer || "",
