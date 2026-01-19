@@ -15,6 +15,7 @@ export const rawEvent = pgTable(
     visitorId: text("visitor_id").notNull(),
     sessionId: text("session_id"),
     metadata: jsonb("metadata"),
+    normalized: jsonb("normalized"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => [

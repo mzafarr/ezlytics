@@ -11,6 +11,7 @@ export const env = createEnv({
     NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
     GOOGLE_CLIENT_ID: z.string().min(1).optional(),
     GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
+    INGEST_MAX_PAYLOAD_BYTES: z.coerce.number().int().min(1024).optional(),
   },
   runtimeEnv: process.env,
   emptyStringAsUndefined: true,

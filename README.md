@@ -125,6 +125,22 @@ export async function POST(request: Request) {
 }
 ```
 
+## Event ingestion allowlist & limits
+
+The ingestion endpoint at `/api/v1/ingest` enforces a strict allowlist and caps.
+
+- Max payload size: 32 KB default (override with `INGEST_MAX_PAYLOAD_BYTES`)
+- Supported schema versions: `v=1` (default when omitted)
+- Allowed top-level keys:
+  - `v`, `type`, `name`, `websiteId`, `domain`, `path`, `referrer`, `timestamp`, `visitorId`, `sessionId`, `metadata`
+  - `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`, `source`, `via`, `ref`
+- Required fields: `type`, `websiteId`, `domain`, `path`, `visitorId`
+- `goal` events must include `name`
+- `identify` events must include `metadata.user_id`
+- Max metadata entries: 12
+- Metadata key max length: 64
+- Metadata value max length: 255
+
 ## Stripe Checkout revenue attribution (webhooks)
 
 Stripe Checkout can pass the analytics cookies into Checkout session metadata so revenue is attributed.
