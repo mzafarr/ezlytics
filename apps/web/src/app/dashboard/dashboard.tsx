@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 
 const storageKeyFunnels = "datafast.funnels";
 const storageKeyExclusions = "datafast.exclusions";
+const storageKeyRevenueProvider = "datafast.revenueProvider";
 const storageKeyDemoVisitorId = "datafast.demoVisitorId";
 const defaultDemoVisitorId = "visitor-1";
 const createId = () => {
@@ -53,6 +54,10 @@ const exclusionSchema = z.object({
   countries: z.string(),
   hostnames: z.string(),
   excludeSelf: z.boolean(),
+});
+const revenueProviderSchema = z.object({
+  provider: z.enum(["none", "stripe", "lemonsqueezy"]),
+  webhookSecret: z.string(),
 });
 
 type Funnel = z.infer<typeof funnelSchema>;
@@ -258,6 +263,10 @@ const defaultExclusions = {
   hostnames: "",
   excludeSelf: false,
 };
+const defaultRevenueProvider = {
+  provider: "none",
+  webhookSecret: "",
+};
 
 const filterLabels = {
   startDate: "Start date",
@@ -281,11 +290,13 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
   const [hasCopiedKey, setHasCopiedKey] = useState(false);
   const [filters, setFilters] = useState(defaultFilters);
   const [exclusions, setExclusions] = useState(defaultExclusions);
+  const [revenueProviderSettings, setRevenueProviderSettings] = useState(defaultRevenueProvider);
   const [funnels, setFunnels] = useState<Funnel[]>([]);
   const [activeFunnelId, setActiveFunnelId] = useState<string | null>(null);
   const [funnelDraft, setFunnelDraft] = useState<Funnel>(() => createEmptyFunnel());
   const storageErrorRef = useRef(false);
   const exclusionStorageErrorRef = useRef(false);
+  const revenueStorageErrorRef = useRef(false);
   const [currentVisitorId, setCurrentVisitorId] = useState(defaultDemoVisitorId);
 
   const createSite = useMutation(
@@ -335,6 +346,20 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
     ? `<script\n  defer\n  data-website-id=\"${latestSite.websiteId}\"\n  data-domain=\"${latestSite.domain}\"\n  src=\"https://your-analytics-domain.com/js/script.js\"\n></script>`
     : "";
   const apiKey = latestSite?.apiKey ?? "";
+  const revenueProviderLabel =
+    revenueProviderSettings.provider === "stripe"
+      ? "Stripe"
+      : revenueProviderSettings.provider === "lemonsqueezy"
+        ? "LemonSqueezy"
+        : "No provider";
+  const revenueConnectionReady =
+    revenueProviderSettings.provider !== "none" && revenueProviderSettings.webhookSecret.trim().length > 0;
+  const revenueStatusLabel =
+    revenueProviderSettings.provider === "none"
+      ? "Not connected"
+      : revenueConnectionReady
+        ? `${revenueProviderLabel} connected`
+        : `${revenueProviderLabel} disconnected`;
   const activeFilters = (Object.entries(filters) as Array<[keyof typeof defaultFilters, string]>)
     .map(([key, value]) => ({ key, label: filterLabels[key], value: value.trim() }))
     .filter(({ value }) => value.length > 0);
@@ -521,6 +546,23 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
   }, []);
 
   useEffect(() => {
+    try {
+      const stored = localStorage.getItem(storageKeyRevenueProvider);
+      if (stored) {
+        const parsed = revenueProviderSchema.safeParse(JSON.parse(stored));
+        if (parsed.success) {
+          setRevenueProviderSettings(parsed.data);
+        }
+      }
+    } catch (error) {
+      if (!revenueStorageErrorRef.current) {
+        toast.error("Unable to load revenue provider settings.");
+        revenueStorageErrorRef.current = true;
+      }
+    }
+  }, []);
+
+  useEffect(() => {
     if (funnels.length === 0) {
       return;
     }
@@ -544,6 +586,17 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
       }
     }
   }, [exclusions]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(storageKeyRevenueProvider, JSON.stringify(revenueProviderSettings));
+    } catch (error) {
+      if (!revenueStorageErrorRef.current) {
+        toast.error("Unable to save revenue provider settings.");
+        revenueStorageErrorRef.current = true;
+      }
+    }
+  }, [revenueProviderSettings]);
 
   const activeFunnel = useMemo(() => {
     if (!activeFunnelId) {
@@ -1121,6 +1174,92 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
             </CardContent>
             <CardFooter className="text-xs text-muted-foreground">
               Exclusions are saved locally and apply to all dashboard views.
+            </CardFooter>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Revenue providers</CardTitle>
+              <CardDescription>Connect Stripe or LemonSqueezy to attribute revenue.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2 rounded-none border px-3 py-2 text-xs">
+                <div>
+                  <div className="text-xs font-medium">Connection status</div>
+                  <div className="text-muted-foreground">{revenueStatusLabel}</div>
+                </div>
+                <div
+                  className={`h-2.5 w-2.5 rounded-full ${
+                    revenueConnectionReady ? "bg-emerald-500" : "bg-amber-500"
+                  }`}
+                  aria-label={revenueConnectionReady ? "Revenue provider connected" : "Revenue provider disconnected"}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="revenue-provider">Provider</Label>
+                <select
+                  id="revenue-provider"
+                  className="border-input h-8 w-full rounded-none border bg-transparent px-2.5 text-xs text-foreground"
+                  value={revenueProviderSettings.provider}
+                  onChange={(event) => {
+                    const nextValue = event.target.value;
+                    if (nextValue !== "none" && nextValue !== "stripe" && nextValue !== "lemonsqueezy") {
+                      return;
+                    }
+                    setRevenueProviderSettings((current) => ({ ...current, provider: nextValue }));
+                  }}
+                >
+                  <option value="none">Not connected</option>
+                  <option value="stripe">Stripe</option>
+                  <option value="lemonsqueezy">LemonSqueezy</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="revenue-webhook-secret">Webhook signing secret</Label>
+                <Input
+                  id="revenue-webhook-secret"
+                  type="password"
+                  placeholder="whsec_..."
+                  value={revenueProviderSettings.webhookSecret}
+                  onChange={(event) =>
+                    setRevenueProviderSettings((current) => ({ ...current, webhookSecret: event.target.value }))
+                  }
+                />
+                <p className="text-xs text-muted-foreground">
+                  Used to verify incoming webhooks. Secrets are stored locally in this browser.
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  onClick={() => {
+                    if (revenueProviderSettings.provider === "none") {
+                      toast.error("Select a revenue provider first.");
+                      return;
+                    }
+                    if (!revenueProviderSettings.webhookSecret.trim()) {
+                      toast.error("Enter a webhook signing secret to connect.");
+                      return;
+                    }
+                    toast.success(`${revenueProviderLabel} connected`);
+                  }}
+                >
+                  Save connection
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    setRevenueProviderSettings(defaultRevenueProvider);
+                    toast.success("Revenue provider disconnected");
+                  }}
+                >
+                  Disconnect
+                </Button>
+              </div>
+            </CardContent>
+            <CardFooter className="text-xs text-muted-foreground">
+              Connection details are stored locally and will be synced once server settings are available.
             </CardFooter>
           </Card>
         </div>
