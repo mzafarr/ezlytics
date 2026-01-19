@@ -838,12 +838,21 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
       .slice(0, 5);
   };
 
+  const funnelList = useMemo(
+    () =>
+      funnels.map((funnel) => ({
+        funnel,
+        metrics: getFunnelMetrics(funnel),
+      })),
+    [funnels, filteredEvents],
+  );
+
   const activeFunnelMetrics = useMemo(() => {
     if (!activeFunnel) {
       return null;
     }
-    return getFunnelMetrics(activeFunnel);
-  }, [activeFunnel, filteredEvents]);
+    return funnelList.find((entry) => entry.funnel.id === activeFunnel.id)?.metrics ?? getFunnelMetrics(activeFunnel);
+  }, [activeFunnel, funnelList]);
 
   const activeFunnelSourceBreakdown = useMemo(() => {
     if (!activeFunnel) {
@@ -1754,29 +1763,34 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
              <CardContent className="space-y-4">
                <div className="space-y-2">
                  <div className="text-xs font-medium">Saved funnels</div>
-                 {funnels.length === 0 ? (
-                   <p className="text-sm text-muted-foreground">No funnels yet.</p>
-                 ) : (
-                   <div className="flex flex-wrap gap-2">
-                     {funnels.map((funnel) => (
-                       <button
-                         key={funnel.id}
-                         type="button"
-                         onClick={() => {
-                           setActiveFunnelId(funnel.id);
-                           setFunnelDraft(funnel);
-                         }}
-                         className={`rounded-none border px-2 py-1 text-xs transition ${
-                           funnel.id === activeFunnelId
-                             ? "border-foreground text-foreground"
-                             : "text-muted-foreground hover:text-foreground"
-                         }`}
-                       >
-                         {funnel.name}
-                       </button>
-                     ))}
-                     <Button
-                       type="button"
+                  {funnelList.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No funnels yet.</p>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+                        <span>Name</span>
+                        <span>Overall conversion</span>
+                      </div>
+                      {funnelList.map(({ funnel, metrics }) => (
+                        <button
+                          key={funnel.id}
+                          type="button"
+                          onClick={() => {
+                            setActiveFunnelId(funnel.id);
+                            setFunnelDraft(funnel);
+                          }}
+                          className={`flex w-full items-center justify-between gap-2 rounded-none border px-2 py-1 text-xs transition ${
+                            funnel.id === activeFunnelId
+                              ? "border-foreground text-foreground"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          <span className="truncate">{funnel.name}</span>
+                          <span className="text-[11px] text-muted-foreground">{formatRate(metrics.overallConversion)}</span>
+                        </button>
+                      ))}
+                      <Button
+                        type="button"
                        size="xs"
                        variant="secondary"
                        onClick={() => {
