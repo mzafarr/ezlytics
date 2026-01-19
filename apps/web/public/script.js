@@ -219,14 +219,15 @@
   }
 
   var existing = window.datafast;
-  if (typeof existing !== "function") {
-    var queue = [];
-    var datafast = function () {
-      queue.push(arguments);
-    };
-    datafast.q = queue;
-    window.datafast = datafast;
+  var queue = [];
+  if (typeof existing === "function" && existing.q) {
+    queue = existing.q;
   }
+  var datafast = function () {
+    queue.push(arguments);
+  };
+  datafast.q = queue;
+  window.datafast = datafast;
 
   var config = {
     websiteId: websiteId,
@@ -527,6 +528,29 @@
     return cleaned;
   }
 
+  function isPlainObject(value) {
+    return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+  }
+
+  function sanitizeIdentifyValue(value, maxLength) {
+    if (value === null || value === undefined) {
+      return "";
+    }
+    var stringValue = String(value);
+    if (!stringValue) {
+      return "";
+    }
+    var cleaned = stringValue.replace(/<[^>]*>/g, "");
+    cleaned = cleaned.replace(/\s+/g, " ").trim();
+    if (!cleaned) {
+      return "";
+    }
+    if (cleaned.length > maxLength) {
+      return cleaned.slice(0, maxLength);
+    }
+    return cleaned;
+  }
+
   function getGoalMetadata(element) {
     if (!element || !element.attributes) {
       return null;
@@ -563,6 +587,66 @@
     return count > 0 ? metadata : null;
   }
 
+  function buildIdentifyMetadata(payload) {
+    if (!payload) {
+      return null;
+    }
+    var metadata = {};
+    var count = 0;
+    for (var i = 0; i < Object.keys(payload).length; i += 1) {
+      var rawKey = Object.keys(payload)[i];
+      if (!rawKey) {
+        continue;
+      }
+      if (
+        rawKey === "user_id" ||
+        rawKey === "userId" ||
+        rawKey === "name" ||
+        rawKey === "image"
+      ) {
+        continue;
+      }
+      var key = normalizeMetadataKey(rawKey);
+      if (!key) {
+        continue;
+      }
+      if (Object.prototype.hasOwnProperty.call(metadata, key)) {
+        continue;
+      }
+      var value = sanitizeMetadataValue(payload[rawKey]);
+      if (!value) {
+        continue;
+      }
+      metadata[key] = value;
+      count += 1;
+      if (count >= 10) {
+        break;
+      }
+    }
+    return count > 0 ? metadata : null;
+  }
+
+  function normalizeIdentifyPayload(payload) {
+    if (!isPlainObject(payload)) {
+      warn("Identify skipped: payload must be an object.");
+      return null;
+    }
+    var userId = sanitizeIdentifyValue(payload.user_id || payload.userId, 128);
+    if (!userId) {
+      warn("Identify skipped: user_id is required.");
+      return null;
+    }
+    var name = sanitizeIdentifyValue(payload.name, 255);
+    var image = sanitizeIdentifyValue(payload.image, 255);
+    var metadata = buildIdentifyMetadata(payload);
+    return {
+      userId: userId,
+      name: name,
+      image: image,
+      metadata: metadata,
+    };
+  }
+
   function findGoalElement(target) {
     var node = target;
     while (node && node !== document.documentElement) {
@@ -572,6 +656,72 @@
       node = node.parentNode;
     }
     return null;
+  }
+
+  function parseScrollThreshold(value) {
+    if (!value) {
+      return 0.5;
+    }
+    var parsed = parseFloat(value);
+    if (isNaN(parsed)) {
+      return 0.5;
+    }
+    if (parsed <= 0) {
+      return 0.01;
+    }
+    if (parsed > 1) {
+      return 1;
+    }
+    return parsed;
+  }
+
+  function parseScrollDelay(value) {
+    if (!value) {
+      return 0;
+    }
+    var parsed = parseInt(value, 10);
+    if (isNaN(parsed) || parsed < 0) {
+      return 0;
+    }
+    return parsed;
+  }
+
+  function isEligibleScrollTarget(element) {
+    if (!element || !element.getAttribute) {
+      return false;
+    }
+    var value = element.getAttribute("data-fast-scroll");
+    return value !== null;
+  }
+
+  function buildScrollGoalName(element) {
+    if (!element || !element.getAttribute) {
+      return "";
+    }
+    var rawName = element.getAttribute("data-fast-scroll") || "";
+    var name = normalizeGoalName(rawName);
+    if (!name) {
+      return "scroll";
+    }
+    if (!isValidGoalName(name)) {
+      warn(
+        'Invalid scroll goal name "' +
+          rawName +
+          '". Scroll goal names must be lowercase letters, numbers, underscores, or hyphens and at most 64 characters.'
+      );
+      return "";
+    }
+    return name;
+  }
+
+  function scheduleScrollGoal(name, metadata, delayValue) {
+    if (delayValue > 0) {
+      setTimeout(function () {
+        sendGoal(name, metadata);
+      }, delayValue);
+      return;
+    }
+    sendGoal(name, metadata);
   }
 
   function sendGoal(name, metadata) {
@@ -598,6 +748,42 @@
       }
     }
     sendEvent(payload, { keepalive: true });
+  }
+
+  function sendIdentify(payload) {
+    var normalized = normalizeIdentifyPayload(payload);
+    if (!normalized) {
+      return;
+    }
+    var identifyPayload = {
+      type: "identify",
+      websiteId: websiteId,
+      domain: domain,
+      path: getCurrentPath(),
+      referrer: document.referrer || "",
+      timestamp: new Date().toISOString(),
+      visitorId: getVisitorId(),
+      sessionId: getSessionId(),
+      user_id: normalized.userId,
+    };
+    if (normalized.name) {
+      identifyPayload.name = normalized.name;
+    }
+    if (normalized.image) {
+      identifyPayload.image = normalized.image;
+    }
+    if (normalized.metadata) {
+      identifyPayload.metadata = normalized.metadata;
+    }
+    var tracking = getTrackingParams();
+    if (tracking) {
+      for (var key in tracking) {
+        if (Object.prototype.hasOwnProperty.call(tracking, key)) {
+          identifyPayload[key] = tracking[key];
+        }
+      }
+    }
+    sendEvent(identifyPayload, { keepalive: true });
   }
 
   function handleGoalClick(event) {
@@ -648,6 +834,30 @@
     sendEvent(payload, { keepalive: true });
   }
 
+  function handleDatafastCommand(args) {
+    if (!args || args.length === 0) {
+      return;
+    }
+    var command = args[0];
+    if (command === "identify") {
+      sendIdentify(args[1]);
+    }
+  }
+
+  function installDatafastHandler() {
+    window.datafast = function () {
+      handleDatafastCommand(arguments);
+    };
+    window.datafast.q = queue;
+    if (!queue || queue.length === 0) {
+      return;
+    }
+    for (var i = 0; i < queue.length; i += 1) {
+      handleDatafastCommand(queue[i]);
+    }
+    queue.length = 0;
+  }
+
   function handleRouteChange() {
     var currentPath = getCurrentPath();
     if (currentPath === lastPath) {
@@ -686,4 +896,56 @@
   if (typeof document !== "undefined" && document.addEventListener) {
     document.addEventListener("click", handleGoalClick, true);
   }
+
+  if (
+    typeof IntersectionObserver !== "undefined" &&
+    typeof document !== "undefined"
+  ) {
+    function observeScrollTarget(element) {
+      if (!isEligibleScrollTarget(element)) {
+        return;
+      }
+      if (element.getAttribute("data-fast-scroll-fired") === "true") {
+        return;
+      }
+      var name = buildScrollGoalName(element);
+      if (!name) {
+        element.setAttribute("data-fast-scroll-fired", "true");
+        return;
+      }
+      var thresholdValue = parseScrollThreshold(
+        element.getAttribute("data-fast-scroll-threshold")
+      );
+      var delayValue = parseScrollDelay(
+        element.getAttribute("data-fast-scroll-delay")
+      );
+      var metadata = getGoalMetadata(element);
+      var scrollObserver = new IntersectionObserver(
+        function (entries) {
+          for (var i = 0; i < entries.length; i += 1) {
+            var entry = entries[i];
+            if (!entry || !entry.isIntersecting) {
+              continue;
+            }
+            if (entry.intersectionRatio < thresholdValue) {
+              continue;
+            }
+            element.setAttribute("data-fast-scroll-fired", "true");
+            scrollObserver.unobserve(element);
+            scrollObserver.disconnect();
+            scheduleScrollGoal(name, metadata, delayValue);
+          }
+        },
+        { root: null, threshold: thresholdValue }
+      );
+      scrollObserver.observe(element);
+    }
+
+    var scrollTargets = document.querySelectorAll("[data-fast-scroll]");
+    for (var j = 0; j < scrollTargets.length; j += 1) {
+      observeScrollTarget(scrollTargets[j]);
+    }
+  }
+
+  installDatafastHandler();
 })();
