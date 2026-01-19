@@ -2,7 +2,10 @@ export type AnalyticsSample = {
   date: string;
   referrer: string;
   source: string;
+  medium: string;
   campaign: string;
+  content: string;
+  term: string;
   country: string;
   device: string;
   browser: string;
@@ -21,7 +24,10 @@ export const analyticsSamples: AnalyticsSample[] = [
     date: "2026-01-16",
     referrer: "https://google.com",
     source: "google",
+    medium: "cpc",
     campaign: "winter-launch",
+    content: "search-ad-1",
+    term: "analytics platform",
     country: "US",
     device: "desktop",
     browser: "chrome",
@@ -38,7 +44,10 @@ export const analyticsSamples: AnalyticsSample[] = [
     date: "2026-01-16",
     referrer: "https://google.com",
     source: "google",
+    medium: "cpc",
     campaign: "winter-launch",
+    content: "search-ad-1",
+    term: "analytics platform",
     country: "US",
     device: "desktop",
     browser: "chrome",
@@ -55,7 +64,10 @@ export const analyticsSamples: AnalyticsSample[] = [
     date: "2026-01-17",
     referrer: "https://twitter.com",
     source: "twitter",
+    medium: "social",
     campaign: "launch-week",
+    content: "launch-thread",
+    term: "datafast",
     country: "GB",
     device: "mobile",
     browser: "safari",
@@ -72,7 +84,10 @@ export const analyticsSamples: AnalyticsSample[] = [
     date: "2026-01-17",
     referrer: "https://twitter.com",
     source: "twitter",
+    medium: "social",
     campaign: "launch-week",
+    content: "launch-thread",
+    term: "datafast",
     country: "GB",
     device: "mobile",
     browser: "safari",
@@ -89,7 +104,10 @@ export const analyticsSamples: AnalyticsSample[] = [
     date: "2026-01-18",
     referrer: "https://news.ycombinator.com",
     source: "hn",
+    medium: "community",
     campaign: "show-hn",
+    content: "show-hn",
+    term: "analytics",
     country: "DE",
     device: "desktop",
     browser: "firefox",
@@ -106,7 +124,10 @@ export const analyticsSamples: AnalyticsSample[] = [
     date: "2026-01-18",
     referrer: "https://news.ycombinator.com",
     source: "hn",
+    medium: "community",
     campaign: "show-hn",
+    content: "show-hn",
+    term: "analytics",
     country: "DE",
     device: "desktop",
     browser: "firefox",
@@ -123,7 +144,10 @@ export const analyticsSamples: AnalyticsSample[] = [
     date: "2026-01-19",
     referrer: "https://newsletter.example.com",
     source: "newsletter",
+    medium: "email",
     campaign: "jan-recap",
+    content: "january-newsletter",
+    term: "retention",
     country: "CA",
     device: "desktop",
     browser: "edge",
@@ -140,7 +164,10 @@ export const analyticsSamples: AnalyticsSample[] = [
     date: "2026-01-19",
     referrer: "https://newsletter.example.com",
     source: "newsletter",
+    medium: "email",
     campaign: "jan-recap",
+    content: "january-newsletter",
+    term: "retention",
     country: "CA",
     device: "desktop",
     browser: "edge",

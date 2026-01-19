@@ -21,6 +21,10 @@ const storageKeyExclusions = "datafast.exclusions";
 const storageKeyRevenueProvider = "datafast.revenueProvider";
 const storageKeyDemoVisitorId = "datafast.demoVisitorId";
 const defaultDemoVisitorId = "visitor-1";
+const directReferrerLabel = "(direct)";
+const notSetLabel = "(not set)";
+const isNotSetFilter = (value: string) => value === notSetLabel.toLowerCase() || value === "not set";
+const isDirectFilter = (value: string) => value === directReferrerLabel.toLowerCase() || value === "direct";
 const createId = () => {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
@@ -87,6 +91,17 @@ const matchesAny = (value: string, matchers: RegExp[]) => {
   return false;
 };
 
+const buildDimensionCounts = (
+  events: AnalyticsSample[],
+  key: keyof AnalyticsSample,
+  fallback: string,
+) =>
+  events.reduce<Record<string, number>>((accumulator, event) => {
+    const value = String(event[key]).trim() || fallback;
+    accumulator[value] = (accumulator[value] ?? 0) + 1;
+    return accumulator;
+  }, {});
+
 const createSampleFunnel = (): Funnel => ({
   id: createId(),
   name: "Sample funnel",
@@ -127,7 +142,10 @@ const defaultFilters = {
   endDate: "",
   referrer: "",
   source: "",
+  medium: "",
   campaign: "",
+  content: "",
+  term: "",
   country: "",
   device: "",
   browser: "",
@@ -153,7 +171,10 @@ const filterLabels = {
   endDate: "End date",
   referrer: "Referrer",
   source: "Source",
+  medium: "Medium",
   campaign: "Campaign",
+  content: "Content",
+  term: "Term",
   country: "Country",
   device: "Device",
   browser: "Browser",
@@ -250,7 +271,10 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
     const normalized = {
       referrer: filters.referrer.trim().toLowerCase(),
       source: filters.source.trim().toLowerCase(),
+      medium: filters.medium.trim().toLowerCase(),
       campaign: filters.campaign.trim().toLowerCase(),
+      content: filters.content.trim().toLowerCase(),
+      term: filters.term.trim().toLowerCase(),
       country: filters.country.trim().toLowerCase(),
       device: filters.device.trim().toLowerCase(),
       browser: filters.browser.trim().toLowerCase(),
@@ -293,13 +317,58 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
         return false;
       }
       if (normalized.referrer && !event.referrer.toLowerCase().includes(normalized.referrer)) {
-        return false;
+        if (isDirectFilter(normalized.referrer)) {
+          if (event.referrer.trim()) {
+            return false;
+          }
+        } else if (!event.referrer.toLowerCase().includes(normalized.referrer)) {
+          return false;
+        }
       }
-      if (normalized.source && !event.source.toLowerCase().includes(normalized.source)) {
-        return false;
+      if (normalized.source) {
+        if (isNotSetFilter(normalized.source)) {
+          if (event.source.trim()) {
+            return false;
+          }
+        } else if (!event.source.toLowerCase().includes(normalized.source)) {
+          return false;
+        }
       }
-      if (normalized.campaign && !event.campaign.toLowerCase().includes(normalized.campaign)) {
-        return false;
+      if (normalized.medium && !event.medium.toLowerCase().includes(normalized.medium)) {
+        if (isNotSetFilter(normalized.medium)) {
+          if (event.medium.trim()) {
+            return false;
+          }
+        } else if (!event.medium.toLowerCase().includes(normalized.medium)) {
+          return false;
+        }
+      }
+      if (normalized.campaign) {
+        if (isNotSetFilter(normalized.campaign)) {
+          if (event.campaign.trim()) {
+            return false;
+          }
+        } else if (!event.campaign.toLowerCase().includes(normalized.campaign)) {
+          return false;
+        }
+      }
+      if (normalized.content) {
+        if (isNotSetFilter(normalized.content)) {
+          if (event.content.trim()) {
+            return false;
+          }
+        } else if (!event.content.toLowerCase().includes(normalized.content)) {
+          return false;
+        }
+      }
+      if (normalized.term) {
+        if (isNotSetFilter(normalized.term)) {
+          if (event.term.trim()) {
+            return false;
+          }
+        } else if (!event.term.toLowerCase().includes(normalized.term)) {
+          return false;
+        }
       }
       if (normalized.country && !event.country.toLowerCase().includes(normalized.country)) {
         return false;
@@ -428,6 +497,12 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
     return accumulator;
   }, {});
   const topRevenueSources = Object.entries(revenueBySource).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  const referrerCounts = buildDimensionCounts(pageviews, "referrer", directReferrerLabel);
+  const sourceCounts = buildDimensionCounts(pageviews, "source", notSetLabel);
+  const mediumCounts = buildDimensionCounts(pageviews, "medium", notSetLabel);
+  const campaignCounts = buildDimensionCounts(pageviews, "campaign", notSetLabel);
+  const contentCounts = buildDimensionCounts(pageviews, "content", notSetLabel);
+  const termCounts = buildDimensionCounts(pageviews, "term", notSetLabel);
   const chartSeries =
     chartMetric === "pageviews" ? pageviewsByDate : chartMetric === "visitors" ? visitorsByDate : revenueByDate;
 
@@ -827,12 +902,39 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
                 />
               </div>
               <div className="space-y-2">
+                <Label htmlFor="filter-medium">Medium</Label>
+                <Input
+                  id="filter-medium"
+                  placeholder="email"
+                  value={filters.medium}
+                  onChange={(event) => setFilters((current) => ({ ...current, medium: event.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
                 <Label htmlFor="filter-campaign">Campaign</Label>
                 <Input
                   id="filter-campaign"
                   placeholder="winter-launch"
                   value={filters.campaign}
                   onChange={(event) => setFilters((current) => ({ ...current, campaign: event.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="filter-content">Content</Label>
+                <Input
+                  id="filter-content"
+                  placeholder="january-newsletter"
+                  value={filters.content}
+                  onChange={(event) => setFilters((current) => ({ ...current, content: event.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="filter-term">Term</Label>
+                <Input
+                  id="filter-term"
+                  placeholder="analytics"
+                  value={filters.term}
+                  onChange={(event) => setFilters((current) => ({ ...current, term: event.target.value }))}
                 />
               </div>
               <div className="space-y-2">
@@ -1712,8 +1814,145 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
                     </div>
                   </div>
                 )}
-              </CardContent>
-            </Card>
+           </CardContent>
+         </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Sources</CardTitle>
+              <CardDescription>Referrers and UTM breakdowns for acquisition.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <div className="text-xs font-medium">Referrers</div>
+                {Object.keys(referrerCounts).length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No referrers for the selected filters.</p>
+                ) : (
+                  Object.entries(referrerCounts)
+                    .sort((a, b) => b[1] - a[1])
+                    .slice(0, 5)
+                    .map(([referrer, count]) => (
+                      <button
+                        key={referrer}
+                        type="button"
+                        onClick={() => applyFilter("referrer", referrer === directReferrerLabel ? "direct" : referrer)}
+                        className="flex w-full items-center justify-between text-left text-xs transition hover:text-foreground"
+                      >
+                        <span>{referrer}</span>
+                        <span className="font-medium">{count}</span>
+                      </button>
+                    ))
+                )}
+              </div>
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <div className="text-xs font-medium">UTM source</div>
+                  {Object.keys(sourceCounts).length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No sources yet.</p>
+                  ) : (
+                    Object.entries(sourceCounts)
+                      .sort((a, b) => b[1] - a[1])
+                      .slice(0, 5)
+                      .map(([source, count]) => (
+                        <button
+                          key={source}
+                          type="button"
+                          onClick={() => applyFilter("source", source === notSetLabel ? "not set" : source)}
+                          className="flex w-full items-center justify-between text-left text-xs transition hover:text-foreground"
+                        >
+                          <span>{source}</span>
+                          <span className="font-medium">{count}</span>
+                        </button>
+                      ))
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <div className="text-xs font-medium">UTM medium</div>
+                  {Object.keys(mediumCounts).length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No mediums yet.</p>
+                  ) : (
+                    Object.entries(mediumCounts)
+                      .sort((a, b) => b[1] - a[1])
+                      .slice(0, 5)
+                      .map(([medium, count]) => (
+                        <button
+                          key={medium}
+                          type="button"
+                          onClick={() => applyFilter("medium", medium === notSetLabel ? "not set" : medium)}
+                          className="flex w-full items-center justify-between text-left text-xs transition hover:text-foreground"
+                        >
+                          <span>{medium}</span>
+                          <span className="font-medium">{count}</span>
+                        </button>
+                      ))
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <div className="text-xs font-medium">UTM campaign</div>
+                  {Object.keys(campaignCounts).length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No campaigns yet.</p>
+                  ) : (
+                    Object.entries(campaignCounts)
+                      .sort((a, b) => b[1] - a[1])
+                      .slice(0, 5)
+                      .map(([campaign, count]) => (
+                        <button
+                          key={campaign}
+                          type="button"
+                          onClick={() => applyFilter("campaign", campaign === notSetLabel ? "not set" : campaign)}
+                          className="flex w-full items-center justify-between text-left text-xs transition hover:text-foreground"
+                        >
+                          <span>{campaign}</span>
+                          <span className="font-medium">{count}</span>
+                        </button>
+                      ))
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <div className="text-xs font-medium">UTM content</div>
+                  {Object.keys(contentCounts).length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No content tags yet.</p>
+                  ) : (
+                    Object.entries(contentCounts)
+                      .sort((a, b) => b[1] - a[1])
+                      .slice(0, 5)
+                      .map(([content, count]) => (
+                        <button
+                          key={content}
+                          type="button"
+                          onClick={() => applyFilter("content", content === notSetLabel ? "not set" : content)}
+                          className="flex w-full items-center justify-between text-left text-xs transition hover:text-foreground"
+                        >
+                          <span>{content}</span>
+                          <span className="font-medium">{count}</span>
+                        </button>
+                      ))
+                  )}
+                </div>
+                <div className="space-y-2">
+                  <div className="text-xs font-medium">UTM term</div>
+                  {Object.keys(termCounts).length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No terms yet.</p>
+                  ) : (
+                    Object.entries(termCounts)
+                      .sort((a, b) => b[1] - a[1])
+                      .slice(0, 5)
+                      .map(([term, count]) => (
+                        <button
+                          key={term}
+                          type="button"
+                          onClick={() => applyFilter("term", term === notSetLabel ? "not set" : term)}
+                          className="flex w-full items-center justify-between text-left text-xs transition hover:text-foreground"
+                        >
+                          <span>{term}</span>
+                          <span className="font-medium">{count}</span>
+                        </button>
+                      ))
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader>
