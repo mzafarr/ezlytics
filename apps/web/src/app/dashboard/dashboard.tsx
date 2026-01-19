@@ -10,10 +10,14 @@ import { queryClient, trpc } from "@/utils/trpc";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 const storageKeyFunnels = "datafast.funnels";
+const storageKeyExclusions = "datafast.exclusions";
+const storageKeyDemoVisitorId = "datafast.demoVisitorId";
+const defaultDemoVisitorId = "visitor-1";
 const createId = () => {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
@@ -43,9 +47,38 @@ const funnelSchema = z.object({
 });
 
 const funnelsSchema = z.array(funnelSchema);
+const exclusionSchema = z.object({
+  pathPatterns: z.string(),
+  ipAddresses: z.string(),
+  countries: z.string(),
+  hostnames: z.string(),
+  excludeSelf: z.boolean(),
+});
 
 type Funnel = z.infer<typeof funnelSchema>;
 type FunnelStep = z.infer<typeof funnelStepSchema>;
+
+const parseExclusionList = (value: string) =>
+  value
+    .split(/[\n,]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const createWildcardMatcher = (pattern: string) => new RegExp(escapeRegExp(pattern).replace(/\\\*/g, ".*"), "i");
+
+const matchesAny = (value: string, matchers: RegExp[]) => {
+  if (!value || matchers.length === 0) {
+    return false;
+  }
+  for (let index = 0; index < matchers.length; index += 1) {
+    if (matchers[index]?.test(value)) {
+      return true;
+    }
+  }
+  return false;
+};
 
 const createSampleFunnel = (): Funnel => ({
   id: createId(),
@@ -74,6 +107,9 @@ const analyticsSamples = [
     browser: "chrome",
     os: "macos",
     path: "/",
+    hostname: "app.ralph.dev",
+    ip: "203.0.113.11",
+    visitorId: "visitor-1",
     goal: "signup",
     revenue: 0,
     eventType: "pageview",
@@ -88,6 +124,9 @@ const analyticsSamples = [
     browser: "chrome",
     os: "macos",
     path: "/pricing",
+    hostname: "app.ralph.dev",
+    ip: "203.0.113.11",
+    visitorId: "visitor-1",
     goal: "signup",
     revenue: 120,
     eventType: "goal",
@@ -102,6 +141,9 @@ const analyticsSamples = [
     browser: "safari",
     os: "ios",
     path: "/",
+    hostname: "marketing.ralph.dev",
+    ip: "198.51.100.24",
+    visitorId: "visitor-2",
     goal: "",
     revenue: 0,
     eventType: "pageview",
@@ -116,6 +158,9 @@ const analyticsSamples = [
     browser: "safari",
     os: "ios",
     path: "/features",
+    hostname: "marketing.ralph.dev",
+    ip: "198.51.100.24",
+    visitorId: "visitor-2",
     goal: "",
     revenue: 0,
     eventType: "pageview",
@@ -130,6 +175,9 @@ const analyticsSamples = [
     browser: "firefox",
     os: "linux",
     path: "/blog/launch",
+    hostname: "blog.ralph.dev",
+    ip: "192.0.2.77",
+    visitorId: "visitor-3",
     goal: "demo_request",
     revenue: 0,
     eventType: "goal",
@@ -144,6 +192,9 @@ const analyticsSamples = [
     browser: "firefox",
     os: "linux",
     path: "/pricing",
+    hostname: "blog.ralph.dev",
+    ip: "192.0.2.77",
+    visitorId: "visitor-3",
     goal: "",
     revenue: 0,
     eventType: "pageview",
@@ -158,6 +209,9 @@ const analyticsSamples = [
     browser: "edge",
     os: "windows",
     path: "/",
+    hostname: "app.ralph.dev",
+    ip: "203.0.113.55",
+    visitorId: "visitor-4",
     goal: "",
     revenue: 0,
     eventType: "pageview",
@@ -172,11 +226,16 @@ const analyticsSamples = [
     browser: "edge",
     os: "windows",
     path: "/pricing",
+    hostname: "app.ralph.dev",
+    ip: "203.0.113.55",
+    visitorId: "visitor-4",
     goal: "purchase",
     revenue: 240,
     eventType: "goal",
   },
 ] as const;
+
+type AnalyticsSample = (typeof analyticsSamples)[number];
 
 const defaultFilters = {
   startDate: "",
@@ -190,6 +249,14 @@ const defaultFilters = {
   os: "",
   pagePath: "",
   goalName: "",
+};
+
+const defaultExclusions = {
+  pathPatterns: "",
+  ipAddresses: "",
+  countries: "",
+  hostnames: "",
+  excludeSelf: false,
 };
 
 const filterLabels = {
@@ -213,10 +280,13 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
   const [hasCopied, setHasCopied] = useState(false);
   const [hasCopiedKey, setHasCopiedKey] = useState(false);
   const [filters, setFilters] = useState(defaultFilters);
+  const [exclusions, setExclusions] = useState(defaultExclusions);
   const [funnels, setFunnels] = useState<Funnel[]>([]);
   const [activeFunnelId, setActiveFunnelId] = useState<string | null>(null);
   const [funnelDraft, setFunnelDraft] = useState<Funnel>(() => createEmptyFunnel());
   const storageErrorRef = useRef(false);
+  const exclusionStorageErrorRef = useRef(false);
+  const [currentVisitorId, setCurrentVisitorId] = useState(defaultDemoVisitorId);
 
   const createSite = useMutation(
     trpc.sites.create.mutationOptions({
@@ -282,6 +352,11 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
       pagePath: filters.pagePath.trim().toLowerCase(),
       goalName: filters.goalName.trim().toLowerCase(),
     };
+    const pathMatchers = parseExclusionList(exclusions.pathPatterns).map(createWildcardMatcher);
+    const countryMatchers = parseExclusionList(exclusions.countries).map(createWildcardMatcher);
+    const hostnameMatchers = parseExclusionList(exclusions.hostnames).map(createWildcardMatcher);
+    const excludedIps = parseExclusionList(exclusions.ipAddresses);
+    const excludeSelf = exclusions.excludeSelf && currentVisitorId;
     const startDate = filters.startDate ? new Date(filters.startDate) : null;
     const endDate = filters.endDate ? new Date(filters.endDate) : null;
     if (endDate) {
@@ -289,6 +364,21 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
     }
 
     return analyticsSamples.filter((event) => {
+      if (excludeSelf && event.visitorId === currentVisitorId) {
+        return false;
+      }
+      if (pathMatchers.length > 0 && matchesAny(event.path, pathMatchers)) {
+        return false;
+      }
+      if (excludedIps.length > 0 && excludedIps.includes(event.ip)) {
+        return false;
+      }
+      if (countryMatchers.length > 0 && matchesAny(event.country, countryMatchers)) {
+        return false;
+      }
+      if (hostnameMatchers.length > 0 && matchesAny(event.hostname, hostnameMatchers)) {
+        return false;
+      }
       const eventDate = new Date(event.date);
       if (startDate && eventDate < startDate) {
         return false;
@@ -325,7 +415,7 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
       }
       return true;
     });
-  }, [filters]);
+  }, [filters, exclusions, currentVisitorId]);
 
   const pageviews = filteredEvents.filter((event) => event.eventType === "pageview");
   const goals = filteredEvents.filter((event) => event.eventType === "goal");
@@ -398,6 +488,39 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
   }, []);
 
   useEffect(() => {
+    try {
+      const stored = localStorage.getItem(storageKeyExclusions);
+      if (stored) {
+        const parsed = exclusionSchema.safeParse(JSON.parse(stored));
+        if (parsed.success) {
+          setExclusions(parsed.data);
+        }
+      }
+    } catch (error) {
+      if (!exclusionStorageErrorRef.current) {
+        toast.error("Unable to load exclusion settings.");
+        exclusionStorageErrorRef.current = true;
+      }
+    }
+
+    try {
+      const storedVisitor = localStorage.getItem(storageKeyDemoVisitorId);
+      if (storedVisitor) {
+        setCurrentVisitorId(storedVisitor);
+        return;
+      }
+      localStorage.setItem(storageKeyDemoVisitorId, defaultDemoVisitorId);
+      setCurrentVisitorId(defaultDemoVisitorId);
+    } catch (error) {
+      if (!exclusionStorageErrorRef.current) {
+        toast.error("Unable to persist browser exclusion settings.");
+        exclusionStorageErrorRef.current = true;
+      }
+      setCurrentVisitorId(defaultDemoVisitorId);
+    }
+  }, []);
+
+  useEffect(() => {
     if (funnels.length === 0) {
       return;
     }
@@ -411,6 +534,17 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
     }
   }, [funnels]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(storageKeyExclusions, JSON.stringify(exclusions));
+    } catch (error) {
+      if (!exclusionStorageErrorRef.current) {
+        toast.error("Unable to save exclusion settings.");
+        exclusionStorageErrorRef.current = true;
+      }
+    }
+  }, [exclusions]);
+
   const activeFunnel = useMemo(() => {
     if (!activeFunnelId) {
       return null;
@@ -418,20 +552,119 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
     return funnels.find((funnel) => funnel.id === activeFunnelId) ?? null;
   }, [activeFunnelId, funnels]);
 
-  const createStepCount = (step: FunnelStep) => {
+  const formatRate = (value: number) => `${value.toFixed(1)}%`;
+
+  const createStepMatcher = (step: FunnelStep) => {
     if (step.type === "page") {
       const condition = step.urlContains.trim().toLowerCase();
       if (!condition) {
-        return 0;
+        return null;
       }
-      return pageviews.filter((event) => event.path.toLowerCase().includes(condition)).length;
+      return (event: AnalyticsSample) => event.path.toLowerCase().includes(condition);
     }
     const goalCondition = step.goalName.trim().toLowerCase();
     if (!goalCondition) {
+      return null;
+    }
+    return (event: AnalyticsSample) => event.goal.toLowerCase().includes(goalCondition);
+  };
+
+  const createStepCount = (step: FunnelStep) => {
+    const matcher = createStepMatcher(step);
+    if (!matcher) {
       return 0;
     }
-    return goals.filter((event) => event.goal.toLowerCase().includes(goalCondition)).length;
+    if (step.type === "page") {
+      return pageviews.filter((event) => matcher(event)).length;
+    }
+    return goals.filter((event) => matcher(event)).length;
   };
+
+  const getStepEvents = (step: FunnelStep) => {
+    const matcher = createStepMatcher(step);
+    if (!matcher) {
+      return [] as AnalyticsSample[];
+    }
+    if (step.type === "page") {
+      return pageviews.filter((event) => matcher(event));
+    }
+    return goals.filter((event) => matcher(event));
+  };
+
+  const getFunnelMetrics = (funnel: Funnel) => {
+    const stepCounts = funnel.steps.map((step) => createStepCount(step));
+    const steps = stepCounts.map((count, index) => {
+      const previous = index === 0 ? count : stepCounts[index - 1] ?? 0;
+      const dropOff = index === 0 ? 0 : Math.max(previous - count, 0);
+      const conversionRate = index === 0 ? 100 : previous === 0 ? 0 : (count / previous) * 100;
+      const dropOffRate = index === 0 ? 0 : previous === 0 ? 0 : (dropOff / previous) * 100;
+      return {
+        index,
+        count,
+        conversionRate,
+        dropOff,
+        dropOffRate,
+      };
+    });
+    const entrants = stepCounts[0] ?? 0;
+    const completions = stepCounts[stepCounts.length - 1] ?? 0;
+    const overallConversion = entrants === 0 ? 0 : (completions / entrants) * 100;
+    return { steps, entrants, completions, overallConversion };
+  };
+
+  const getBreakdownForFunnel = (funnel: Funnel, dimension: "source" | "country") => {
+    if (funnel.steps.length === 0) {
+      return [];
+    }
+    const entrants = getStepEvents(funnel.steps[0]);
+    const completions = getStepEvents(funnel.steps[funnel.steps.length - 1]);
+    if (entrants.length === 0) {
+      return [];
+    }
+    const completionsByDimension = completions.reduce<Record<string, number>>((accumulator, event) => {
+      const key = event[dimension] || "unknown";
+      accumulator[key] = (accumulator[key] ?? 0) + 1;
+      return accumulator;
+    }, {});
+    const entrantsByDimension = entrants.reduce<Record<string, number>>((accumulator, event) => {
+      const key = event[dimension] || "unknown";
+      accumulator[key] = (accumulator[key] ?? 0) + 1;
+      return accumulator;
+    }, {});
+    return Object.entries(completionsByDimension)
+      .map(([key, value]) => ({
+        key,
+        completions: value,
+        entrants: entrantsByDimension[key] ?? 0,
+      }))
+      .map((entry) => ({
+        ...entry,
+        conversionRate: entry.entrants === 0 ? 0 : (entry.completions / entry.entrants) * 100,
+      }))
+      .sort((a, b) => b.completions - a.completions)
+      .slice(0, 5);
+  };
+
+  const activeFunnelMetrics = useMemo(() => {
+    if (!activeFunnel) {
+      return null;
+    }
+    return getFunnelMetrics(activeFunnel);
+  }, [activeFunnel, filteredEvents]);
+
+  const activeFunnelSourceBreakdown = useMemo(() => {
+    if (!activeFunnel) {
+      return [];
+    }
+    return getBreakdownForFunnel(activeFunnel, "source");
+  }, [activeFunnel, filteredEvents]);
+
+  const activeFunnelCountryBreakdown = useMemo(() => {
+    if (!activeFunnel) {
+      return [];
+    }
+    return getBreakdownForFunnel(activeFunnel, "country");
+  }, [activeFunnel, filteredEvents]);
 
   const saveFunnelDraft = () => {
     const name = funnelDraft.name.trim();
@@ -822,6 +1055,74 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
               </Button>
             </CardFooter>
           </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Exclusions</CardTitle>
+              <CardDescription>Exclude paths, IPs, countries, hostnames, and your own visits.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="exclude-paths">Path patterns</Label>
+                <textarea
+                  id="exclude-paths"
+                  className="min-h-[96px] w-full rounded-none border bg-background px-3 py-2 text-xs"
+                  placeholder="/admin*, /internal"
+                  value={exclusions.pathPatterns}
+                  onChange={(event) =>
+                    setExclusions((current) => ({ ...current, pathPatterns: event.target.value }))
+                  }
+                />
+                <p className="text-xs text-muted-foreground">One per line or comma-separated, supports * wildcard.</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="exclude-ips">IP addresses</Label>
+                <Input
+                  id="exclude-ips"
+                  placeholder="203.0.113.11, 198.51.100.24"
+                  value={exclusions.ipAddresses}
+                  onChange={(event) =>
+                    setExclusions((current) => ({ ...current, ipAddresses: event.target.value }))
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="exclude-countries">Countries</Label>
+                <Input
+                  id="exclude-countries"
+                  placeholder="US, GB, DE"
+                  value={exclusions.countries}
+                  onChange={(event) =>
+                    setExclusions((current) => ({ ...current, countries: event.target.value }))
+                  }
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="exclude-hostnames">Hostnames</Label>
+                <Input
+                  id="exclude-hostnames"
+                  placeholder="app.ralph.dev, *.ralph.dev"
+                  value={exclusions.hostnames}
+                  onChange={(event) =>
+                    setExclusions((current) => ({ ...current, hostnames: event.target.value }))
+                  }
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="exclude-self"
+                  checked={exclusions.excludeSelf}
+                  onCheckedChange={(checked) =>
+                    setExclusions((current) => ({ ...current, excludeSelf: Boolean(checked) }))
+                  }
+                />
+                <Label htmlFor="exclude-self">Exclude this browser</Label>
+              </div>
+            </CardContent>
+            <CardFooter className="text-xs text-muted-foreground">
+              Exclusions are saved locally and apply to all dashboard views.
+            </CardFooter>
+          </Card>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-2">
@@ -1083,11 +1384,11 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
                  </span>
                </div>
 
-               {activeFunnel && (
-                 <div className="space-y-3">
-                   <div className="text-xs font-medium">Preview (filter-aware)</div>
-                   {activeFunnel.steps.map((step, index) => {
-                     const count = createStepCount(step);
+                {activeFunnel && (
+                  <div className="space-y-3">
+                    <div className="text-xs font-medium">Preview (filter-aware)</div>
+                    {activeFunnel.steps.map((step, index) => {
+                      const count = createStepCount(step);
                      const filterKey = step.type === "page" ? ("pagePath" as const) : ("goalName" as const);
                      const filterValue = step.type === "page" ? step.urlContains : step.goalName;
                      return (
@@ -1101,13 +1402,101 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
                            {index + 1}. {step.name.trim() || "Untitled step"}
                          </span>
                          <span className="font-medium">{count}</span>
-                       </button>
-                     );
-                   })}
-                 </div>
-               )}
-             </CardContent>
-           </Card>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {activeFunnel && activeFunnelMetrics && (
+                  <div className="space-y-3">
+                    <div className="text-xs font-medium">Funnel analytics</div>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="rounded-md border px-3 py-2 text-xs">
+                        <div className="text-muted-foreground">Entrants</div>
+                        <div className="font-medium">{activeFunnelMetrics.entrants}</div>
+                      </div>
+                      <div className="rounded-md border px-3 py-2 text-xs">
+                        <div className="text-muted-foreground">Completions</div>
+                        <div className="font-medium">{activeFunnelMetrics.completions}</div>
+                      </div>
+                      <div className="rounded-md border px-3 py-2 text-xs">
+                        <div className="text-muted-foreground">Overall conversion</div>
+                        <div className="font-medium">{formatRate(activeFunnelMetrics.overallConversion)}</div>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      {activeFunnelMetrics.steps.map((stepMetric) => {
+                        const step = activeFunnel.steps[stepMetric.index];
+                        const filterKey = step.type === "page" ? ("pagePath" as const) : ("goalName" as const);
+                        const filterValue = step.type === "page" ? step.urlContains : step.goalName;
+                        return (
+                          <button
+                            key={step.id}
+                            type="button"
+                            onClick={() => applyFilter(filterKey, filterValue)}
+                            className="flex w-full items-center justify-between gap-2 text-left text-xs transition hover:text-foreground"
+                          >
+                            <span className="min-w-0">
+                              {stepMetric.index + 1}. {step.name.trim() || "Untitled step"}
+                            </span>
+                            <span className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                              <span>
+                                {stepMetric.count} {stepMetric.count === 1 ? "completion" : "completions"}
+                              </span>
+                              <span>{formatRate(stepMetric.conversionRate)} conv</span>
+                              {stepMetric.index > 0 && (
+                                <span>
+                                  {stepMetric.dropOff} drop · {formatRate(stepMetric.dropOffRate)}
+                                </span>
+                              )}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="space-y-2">
+                        <div className="text-xs font-medium">Top sources</div>
+                        {activeFunnelSourceBreakdown.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">No funnel conversions yet.</p>
+                        ) : (
+                          activeFunnelSourceBreakdown.map((entry) => (
+                            <button
+                              key={entry.key}
+                              type="button"
+                              onClick={() => applyFilter("source", entry.key)}
+                              className="flex w-full items-center justify-between text-left text-xs transition hover:text-foreground"
+                            >
+                              <span>{entry.key}</span>
+                              <span className="font-medium">{formatRate(entry.conversionRate)}</span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <div className="text-xs font-medium">Top countries</div>
+                        {activeFunnelCountryBreakdown.length === 0 ? (
+                          <p className="text-sm text-muted-foreground">No funnel conversions yet.</p>
+                        ) : (
+                          activeFunnelCountryBreakdown.map((entry) => (
+                            <button
+                              key={entry.key}
+                              type="button"
+                              onClick={() => applyFilter("country", entry.key)}
+                              className="flex w-full items-center justify-between text-left text-xs transition hover:text-foreground"
+                            >
+                              <span>{entry.key}</span>
+                              <span className="font-medium">{formatRate(entry.conversionRate)}</span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
 
           <Card>
             <CardHeader>
