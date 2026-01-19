@@ -41,6 +41,8 @@ const getAttributionSnapshot = async (siteId: string, visitorId: string) => {
   };
 };
 
+const getGoalName = (amount: number | null) => (amount === 0 ? "free_trial" : "payment");
+
 export const POST = async (
   request: NextRequest,
   context: { params: Promise<{ websiteId: string }> },
@@ -120,6 +122,21 @@ export const POST = async (
     visitorId,
     sessionId: sessionId || null,
     metadata: paymentMetadata,
+  });
+
+  await db.insert(rawEvent).values({
+    id: randomUUID(),
+    siteId: siteRecord.id,
+    type: "goal",
+    name: getGoalName(amount),
+    visitorId,
+    sessionId: sessionId || null,
+    metadata: {
+      provider: "stripe",
+      transaction_id: transactionId || null,
+      amount,
+      currency: currency || null,
+    },
   });
 
   return NextResponse.json({ ok: true });

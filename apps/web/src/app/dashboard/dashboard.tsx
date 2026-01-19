@@ -1,6 +1,7 @@
 "use client";
 import { useForm } from "@tanstack/react-form";
 import { useMutation, useQuery } from "@tanstack/react-query";
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import z from "zod";
@@ -13,6 +14,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { analyticsSamples, type AnalyticsSample } from "./analytics-samples";
 
 const storageKeyFunnels = "datafast.funnels";
 const storageKeyExclusions = "datafast.exclusions";
@@ -101,146 +103,24 @@ const createEmptyFunnel = (): Funnel => ({
   steps: [{ id: createId(), name: "", type: "page", urlContains: "/" }],
 });
 
-const analyticsSamples = [
-  {
-    date: "2026-01-16",
-    referrer: "https://google.com",
-    source: "google",
-    campaign: "winter-launch",
-    country: "US",
-    device: "desktop",
-    browser: "chrome",
-    os: "macos",
-    path: "/",
-    hostname: "app.ralph.dev",
-    ip: "203.0.113.11",
-    visitorId: "visitor-1",
-    goal: "signup",
-    revenue: 0,
-    eventType: "pageview",
-  },
-  {
-    date: "2026-01-16",
-    referrer: "https://google.com",
-    source: "google",
-    campaign: "winter-launch",
-    country: "US",
-    device: "desktop",
-    browser: "chrome",
-    os: "macos",
-    path: "/pricing",
-    hostname: "app.ralph.dev",
-    ip: "203.0.113.11",
-    visitorId: "visitor-1",
-    goal: "signup",
-    revenue: 120,
-    eventType: "goal",
-  },
-  {
-    date: "2026-01-17",
-    referrer: "https://twitter.com",
-    source: "twitter",
-    campaign: "launch-week",
-    country: "GB",
-    device: "mobile",
-    browser: "safari",
-    os: "ios",
-    path: "/",
-    hostname: "marketing.ralph.dev",
-    ip: "198.51.100.24",
-    visitorId: "visitor-2",
-    goal: "",
-    revenue: 0,
-    eventType: "pageview",
-  },
-  {
-    date: "2026-01-17",
-    referrer: "https://twitter.com",
-    source: "twitter",
-    campaign: "launch-week",
-    country: "GB",
-    device: "mobile",
-    browser: "safari",
-    os: "ios",
-    path: "/features",
-    hostname: "marketing.ralph.dev",
-    ip: "198.51.100.24",
-    visitorId: "visitor-2",
-    goal: "",
-    revenue: 0,
-    eventType: "pageview",
-  },
-  {
-    date: "2026-01-18",
-    referrer: "https://news.ycombinator.com",
-    source: "hn",
-    campaign: "show-hn",
-    country: "DE",
-    device: "desktop",
-    browser: "firefox",
-    os: "linux",
-    path: "/blog/launch",
-    hostname: "blog.ralph.dev",
-    ip: "192.0.2.77",
-    visitorId: "visitor-3",
-    goal: "demo_request",
-    revenue: 0,
-    eventType: "goal",
-  },
-  {
-    date: "2026-01-18",
-    referrer: "https://news.ycombinator.com",
-    source: "hn",
-    campaign: "show-hn",
-    country: "DE",
-    device: "desktop",
-    browser: "firefox",
-    os: "linux",
-    path: "/pricing",
-    hostname: "blog.ralph.dev",
-    ip: "192.0.2.77",
-    visitorId: "visitor-3",
-    goal: "",
-    revenue: 0,
-    eventType: "pageview",
-  },
-  {
-    date: "2026-01-19",
-    referrer: "https://newsletter.example.com",
-    source: "newsletter",
-    campaign: "jan-recap",
-    country: "CA",
-    device: "desktop",
-    browser: "edge",
-    os: "windows",
-    path: "/",
-    hostname: "app.ralph.dev",
-    ip: "203.0.113.55",
-    visitorId: "visitor-4",
-    goal: "",
-    revenue: 0,
-    eventType: "pageview",
-  },
-  {
-    date: "2026-01-19",
-    referrer: "https://newsletter.example.com",
-    source: "newsletter",
-    campaign: "jan-recap",
-    country: "CA",
-    device: "desktop",
-    browser: "edge",
-    os: "windows",
-    path: "/pricing",
-    hostname: "app.ralph.dev",
-    ip: "203.0.113.55",
-    visitorId: "visitor-4",
-    goal: "purchase",
-    revenue: 240,
-    eventType: "goal",
-  },
-] as const;
-
-type AnalyticsSample = (typeof analyticsSamples)[number];
+type VisitorSummary = {
+  visitorId: string;
+  firstSeen: string;
+  firstSeenAt: number;
+  lastSeen: string;
+  lastSeenAt: number;
+  lastPath: string;
+  lastReferrer: string;
+  source: string;
+  campaign: string;
+  country: string;
+  device: string;
+  browser: string;
+  os: string;
+  pageviews: number;
+  goals: number;
+  revenue: number;
+};
 
 const defaultFilters = {
   startDate: "",
@@ -452,6 +332,60 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
     accumulator[event.path] = (accumulator[event.path] ?? 0) + 1;
     return accumulator;
   }, {});
+  const visitorsById = filteredEvents.reduce<Record<string, VisitorSummary>>((accumulator, event) => {
+    const eventDate = new Date(event.date);
+    const eventTimestamp = eventDate.getTime();
+    const existing = accumulator[event.visitorId];
+    if (!existing) {
+      accumulator[event.visitorId] = {
+        visitorId: event.visitorId,
+        firstSeen: event.date,
+        firstSeenAt: eventTimestamp,
+        lastSeen: event.date,
+        lastSeenAt: eventTimestamp,
+        lastPath: event.path,
+        lastReferrer: event.referrer,
+        source: event.source,
+        campaign: event.campaign,
+        country: event.country,
+        device: event.device,
+        browser: event.browser,
+        os: event.os,
+        pageviews: event.eventType === "pageview" ? 1 : 0,
+        goals: event.eventType === "goal" ? 1 : 0,
+        revenue: event.revenue,
+      };
+      return accumulator;
+    }
+    if (eventTimestamp < existing.firstSeenAt) {
+      existing.firstSeenAt = eventTimestamp;
+      existing.firstSeen = event.date;
+    }
+    if (eventTimestamp > existing.lastSeenAt) {
+      existing.lastSeenAt = eventTimestamp;
+      existing.lastSeen = event.date;
+      existing.lastPath = event.path;
+      existing.lastReferrer = event.referrer;
+      existing.source = event.source;
+      existing.campaign = event.campaign;
+      existing.country = event.country;
+      existing.device = event.device;
+      existing.browser = event.browser;
+      existing.os = event.os;
+    }
+    if (event.eventType === "pageview") {
+      existing.pageviews += 1;
+    }
+    if (event.eventType === "goal") {
+      existing.goals += 1;
+    }
+    if (event.revenue) {
+      existing.revenue += event.revenue;
+    }
+    return accumulator;
+  }, {});
+  const visitorsList = Object.values(visitorsById).sort((a, b) => b.lastSeenAt - a.lastSeenAt);
+  const visitorCountLabel = `${visitorsList.length} visitor${visitorsList.length === 1 ? "" : "s"}`;
   const goalCounts = goals.reduce<Record<string, number>>((accumulator, event) => {
     if (!event.goal) {
       return accumulator;
@@ -1289,6 +1223,68 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
                   ))
               )}
             </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Visitors</CardTitle>
+              <CardDescription>Recent visitors based on the active filters.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>{visitorCountLabel}</span>
+                <span>Sorted by most recent</span>
+              </div>
+              {visitorsList.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No visitors match the current filters.</p>
+              ) : (
+                <div className="space-y-2">
+                  {visitorsList.map((visitor) => (
+                    <Link
+                      key={visitor.visitorId}
+                      href={{ pathname: "/dashboard/visitors/[visitorId]", query: { visitorId: visitor.visitorId } }}
+                      className="block rounded-none border px-3 py-2 text-xs transition hover:border-foreground"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="space-y-1">
+                          <div className="text-xs font-medium">{visitor.visitorId}</div>
+                          <div className="text-xs text-muted-foreground">
+                            {visitor.country} · {visitor.device} · {visitor.browser}
+                          </div>
+                        </div>
+                        <div className="text-right text-xs text-muted-foreground">
+                          <div>Last seen {visitor.lastSeen}</div>
+                          <div>{visitor.lastPath}</div>
+                        </div>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-3 text-[11px] text-muted-foreground">
+                        <span>
+                          Referrer: <span className="text-foreground">{visitor.lastReferrer || "direct"}</span>
+                        </span>
+                        <span>
+                          Source: <span className="text-foreground">{visitor.source || "unknown"}</span>
+                        </span>
+                        <span>
+                          Campaign: <span className="text-foreground">{visitor.campaign || "none"}</span>
+                        </span>
+                        <span>
+                          Pageviews: <span className="text-foreground">{visitor.pageviews}</span>
+                        </span>
+                        <span>
+                          Goals: <span className="text-foreground">{visitor.goals}</span>
+                        </span>
+                        <span>
+                          Revenue: <span className="text-foreground">${visitor.revenue.toFixed(2)}</span>
+                        </span>
+                      </div>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+            <CardFooter className="text-xs text-muted-foreground">
+              Click a visitor to view the detailed profile.
+            </CardFooter>
           </Card>
 
           <Card>
