@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { db, rawEvent } from "@my-better-t-app/db";
 import { env } from "@my-better-t-app/env/server";
+import { metricsForEvent, upsertRollups } from "@/lib/rollups";
 
 const DEFAULT_MAX_PAYLOAD_BYTES = 32 * 1024;
 const MAX_PAYLOAD_BYTES = env.INGEST_MAX_PAYLOAD_BYTES ?? DEFAULT_MAX_PAYLOAD_BYTES;
@@ -432,6 +433,9 @@ export const POST = async (request: NextRequest) => {
     country,
   };
 
+  const createdAt = payload.timestamp ?? new Date();
+  const metadata = payload.metadata ?? null;
+
   await db.insert(rawEvent).values({
     id: randomUUID(),
     siteId: siteRecord.id,
@@ -439,9 +443,19 @@ export const POST = async (request: NextRequest) => {
     name: payload.name ?? null,
     visitorId: payload.visitorId,
     sessionId: payload.sessionId ?? null,
-    metadata: payload.metadata ?? null,
+    metadata,
     normalized,
-    createdAt: payload.timestamp ?? new Date(),
+    createdAt,
+  });
+
+  await upsertRollups({
+    siteId: siteRecord.id,
+    timestamp: createdAt,
+    metrics: metricsForEvent({
+      type: payload.type,
+      metadata: metadata && typeof metadata === "object" ? metadata : null,
+      sessionId: payload.sessionId ?? null,
+    }),
   });
 
   return NextResponse.json({ ok: true });

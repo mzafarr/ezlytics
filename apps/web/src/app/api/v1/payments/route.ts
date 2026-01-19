@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { verifyApiKey } from "@my-better-t-app/api/api-key";
 import { db, payment, rawEvent } from "@my-better-t-app/db";
+import { metricsForEvent, upsertRollups } from "@/lib/rollups";
 
 const idSchema = z.string().trim().min(1).max(128);
 
@@ -111,13 +112,16 @@ export const POST = async (request: NextRequest) => {
   });
 
   if (parsed.data.visitor_id) {
+    const paymentMetadata = buildMetadata(parsed.data);
+    const goalMetadata = buildGoalMetadata(parsed.data);
+
     await db.insert(rawEvent).values({
       id: randomUUID(),
       siteId: authResult.siteId,
       type: "payment",
       name: "custom_payment",
       visitorId: parsed.data.visitor_id,
-      metadata: buildMetadata(parsed.data),
+      metadata: paymentMetadata,
       createdAt,
     });
 
@@ -127,8 +131,23 @@ export const POST = async (request: NextRequest) => {
       type: "goal",
       name: getGoalName(parsed.data.amount),
       visitorId: parsed.data.visitor_id,
-      metadata: buildGoalMetadata(parsed.data),
+      metadata: goalMetadata,
       createdAt,
+    });
+
+    await upsertRollups({
+      siteId: authResult.siteId,
+      timestamp: createdAt,
+      metrics: metricsForEvent({
+        type: "payment",
+        metadata: paymentMetadata,
+      }),
+    });
+
+    await upsertRollups({
+      siteId: authResult.siteId,
+      timestamp: createdAt,
+      metrics: metricsForEvent({ type: "goal", metadata: goalMetadata }),
     });
   }
 

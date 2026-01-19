@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 
 import { and, db, eq, rawEvent } from "@my-better-t-app/db";
+import { metricsForEvent, upsertRollups } from "@/lib/rollups";
 
 const SUPPORTED_EVENTS = new Set(["order_created", "subscription_payment_success"]);
 
@@ -151,6 +152,13 @@ export const POST = async (
     paymentMetadata.attribution = attribution;
   }
 
+  const goalMetadata = {
+    provider: "lemonsqueezy",
+    transaction_id: transactionId || null,
+    amount,
+    currency: currency || null,
+  };
+
   await db.insert(rawEvent).values({
     id: randomUUID(),
     siteId: siteRecord.id,
@@ -168,12 +176,19 @@ export const POST = async (
     name: getGoalName(amount),
     visitorId,
     sessionId: sessionId || null,
-    metadata: {
-      provider: "lemonsqueezy",
-      transaction_id: transactionId || null,
-      amount,
-      currency: currency || null,
-    },
+    metadata: goalMetadata,
+  });
+
+  await upsertRollups({
+    siteId: siteRecord.id,
+    timestamp: new Date(),
+    metrics: metricsForEvent({ type: "payment", metadata: paymentMetadata }),
+  });
+
+  await upsertRollups({
+    siteId: siteRecord.id,
+    timestamp: new Date(),
+    metrics: metricsForEvent({ type: "goal", metadata: goalMetadata }),
   });
 
   return NextResponse.json({ ok: true });

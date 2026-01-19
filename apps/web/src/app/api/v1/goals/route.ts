@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { verifyApiKey } from "@my-better-t-app/api/api-key";
 import { and, db, eq, rawEvent } from "@my-better-t-app/db";
+import { metricsForEvent, upsertRollups } from "@/lib/rollups";
 
 const MAX_METADATA_KEYS = 10;
 const MAX_METADATA_KEY_LENGTH = 64;
@@ -142,13 +143,23 @@ export const POST = async (request: NextRequest) => {
     );
   }
 
+  const metadata = parsed.data.metadata ?? null;
+  const createdAt = new Date();
+
   await db.insert(rawEvent).values({
     id: randomUUID(),
     siteId: authResult.siteId,
     type: "goal",
     name: parsed.data.name,
     visitorId,
-    metadata: parsed.data.metadata ?? null,
+    metadata,
+    createdAt,
+  });
+
+  await upsertRollups({
+    siteId: authResult.siteId,
+    timestamp: createdAt,
+    metrics: metricsForEvent({ type: "goal", metadata }),
   });
 
   return NextResponse.json({ ok: true });
