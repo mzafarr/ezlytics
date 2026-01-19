@@ -146,6 +146,19 @@ type GoalSummary = {
   pages: Record<string, number>;
 };
 
+type WeeklyRecap =
+  | { isMonday: false }
+  | {
+      isMonday: true;
+      topSourceChange: { key: string; delta: number; current: number; previous: number } | null;
+      bestCampaign?: { key: string; rate: number; sessions: number; conversions: number };
+      funnelDropOff?: { index: number; dropOff: number; name: string } | null;
+      currentRevenue: number;
+      previousRevenue: number;
+      revenueChange: number;
+      periodLabel: string;
+    };
+
 const defaultFilters = {
   startDate: "",
   endDate: "",
@@ -201,6 +214,7 @@ const rollupDimensions = [
   "browser",
   "goal",
 ] as const;
+const weekStartDay = 1;
 
 export default function Dashboard({ session }: { session: typeof authClient.$Infer.Session }) {
   const privateData = useQuery(trpc.privateData.queryOptions());
@@ -716,7 +730,6 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
         ? visitorsByDateDisplay
         : revenueByDate;
   const rollupModeLabel = useRollups ? "Rollups" : "Raw events";
-
   const applyFilter = (key: keyof typeof defaultFilters, value: string) => {
     if (!value.trim()) {
       return;
@@ -1004,6 +1017,115 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
     }
     return getBreakdownForFunnel(activeFunnel, "country");
   }, [activeFunnel, filteredEvents]);
+
+  const formatDelta = (value: number) => {
+    const sign = value > 0 ? "+" : value < 0 ? "-" : "";
+    return `${sign}${Math.abs(value).toFixed(1)}%`;
+  };
+  const weeklyRecap = useMemo<WeeklyRecap>(() => {
+    if (filteredEvents.length === 0) {
+      return { isMonday: false };
+    }
+    const parseDate = (value: string) => {
+      const parsed = new Date(`${value}T00:00:00`);
+      return Number.isNaN(parsed.getTime()) ? null : parsed;
+    };
+    const today = new Date();
+    const dayOffset = (today.getDay() - weekStartDay + 7) % 7;
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - dayOffset);
+    monday.setHours(0, 0, 0, 0);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    sunday.setHours(23, 59, 59, 999);
+    if (today < monday || today > sunday || today.getDay() !== weekStartDay) {
+      return { isMonday: false };
+    }
+    const previousMonday = new Date(monday);
+    previousMonday.setDate(monday.getDate() - 7);
+    const previousSunday = new Date(sunday);
+    previousSunday.setDate(sunday.getDate() - 7);
+    const currentWeek = filteredEvents.filter((event) => {
+      const eventDate = parseDate(event.date);
+      return eventDate && eventDate >= monday && eventDate <= sunday;
+    });
+    const previousWeek = filteredEvents.filter((event) => {
+      const eventDate = parseDate(event.date);
+      return eventDate && eventDate >= previousMonday && eventDate <= previousSunday;
+    });
+    const totalCurrent = currentWeek.length;
+    const totalPrevious = previousWeek.length;
+    const sourceCurrent = currentWeek.reduce<Record<string, number>>((accumulator, event) => {
+      const key = event.source.trim() || notSetLabel;
+      accumulator[key] = (accumulator[key] ?? 0) + 1;
+      return accumulator;
+    }, {});
+    const sourcePrevious = previousWeek.reduce<Record<string, number>>((accumulator, event) => {
+      const key = event.source.trim() || notSetLabel;
+      accumulator[key] = (accumulator[key] ?? 0) + 1;
+      return accumulator;
+    }, {});
+    const sourceDeltaList = Object.keys({ ...sourceCurrent, ...sourcePrevious })
+      .map((key) => {
+        const current = sourceCurrent[key] ?? 0;
+        const previous = sourcePrevious[key] ?? 0;
+        const currentShare = totalCurrent ? current / totalCurrent : 0;
+        const previousShare = totalPrevious ? previous / totalPrevious : 0;
+        return {
+          key,
+          delta: (currentShare - previousShare) * 100,
+          current,
+          previous,
+        };
+      })
+      .sort((left, right) => Math.abs(right.delta) - Math.abs(left.delta));
+    const topSourceChange = sourceDeltaList[0] ?? null;
+    const campaignCurrent = currentWeek.reduce<
+      Record<string, { sessions: Set<string>; conversions: number }>
+    >((accumulator, event) => {
+      const key = event.campaign.trim() || notSetLabel;
+      const existing = accumulator[key] ?? { sessions: new Set<string>(), conversions: 0 };
+      existing.sessions.add(`${event.visitorId}-${event.date}`);
+      if (event.eventType === "goal") {
+        existing.conversions += 1;
+      }
+      accumulator[key] = existing;
+      return accumulator;
+    }, {});
+    const bestCampaign = Object.entries(campaignCurrent)
+      .map(([key, entry]) => {
+        const sessions = entry.sessions.size;
+        const rate = sessions === 0 ? 0 : (entry.conversions / sessions) * 100;
+        return { key, rate, sessions, conversions: entry.conversions };
+      })
+      .sort((left, right) => right.rate - left.rate)[0];
+    const funnelDropOff = activeFunnelMetrics?.steps
+      ? activeFunnelMetrics.steps
+          .map((step, index) => ({
+            index,
+            dropOff: step.dropOff,
+            name: activeFunnel?.steps[index]?.name || `Step ${index + 1}`,
+          }))
+          .sort((left, right) => right.dropOff - left.dropOff)[0]
+      : null;
+    const currentRevenue = currentWeek.reduce((sum, event) => sum + event.revenue, 0);
+    const previousRevenue = previousWeek.reduce((sum, event) => sum + event.revenue, 0);
+    const revenueChange = previousRevenue === 0 ? 0 : ((currentRevenue - previousRevenue) / previousRevenue) * 100;
+    return {
+      isMonday: true,
+      topSourceChange,
+      bestCampaign,
+      funnelDropOff,
+      currentRevenue,
+      previousRevenue,
+      revenueChange,
+      periodLabel: `${monday.toLocaleDateString()} - ${sunday.toLocaleDateString()}`,
+    };
+  }, [filteredEvents, activeFunnelMetrics, activeFunnel]);
+  const weeklyRecapReady = weeklyRecap.isMonday;
+  const weeklyRecapRevenueChange = weeklyRecapReady ? weeklyRecap.revenueChange : 0;
+  const weeklyRecapCurrentRevenue = weeklyRecapReady ? weeklyRecap.currentRevenue : 0;
+  const weeklyRecapPreviousRevenue = weeklyRecapReady ? weeklyRecap.previousRevenue : 0;
 
   const saveFunnelDraft = () => {
     const name = funnelDraft.name.trim();
@@ -1326,6 +1448,60 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
         </Card>
 
         <div className="grid gap-6 md:grid-cols-2">
+          {weeklyRecapReady && (
+            <Card className="md:col-span-2">
+              <CardHeader>
+                <CardTitle>Weekly recap</CardTitle>
+                <CardDescription>{weeklyRecap.periodLabel}</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-md border px-3 py-2 text-xs">
+                  <div className="text-muted-foreground">Biggest traffic source change</div>
+                  <div className="mt-1 text-sm font-semibold">
+                    {weeklyRecap.topSourceChange
+                      ? `${weeklyRecap.topSourceChange.key} (${formatDelta(weeklyRecap.topSourceChange.delta)})`
+                      : "No source data yet"}
+                  </div>
+                  {weeklyRecap.topSourceChange && (
+                    <div className="text-[11px] text-muted-foreground">
+                      {weeklyRecap.topSourceChange.current} this week vs {weeklyRecap.topSourceChange.previous} last week
+                    </div>
+                  )}
+                </div>
+                <div className="rounded-md border px-3 py-2 text-xs">
+                  <div className="text-muted-foreground">Best converting campaign</div>
+                  <div className="mt-1 text-sm font-semibold">
+                    {weeklyRecap.bestCampaign
+                      ? `${weeklyRecap.bestCampaign.key} (${formatRate(weeklyRecap.bestCampaign.rate)})`
+                      : "No campaigns converted"}
+                  </div>
+                  {weeklyRecap.bestCampaign && (
+                    <div className="text-[11px] text-muted-foreground">
+                      {weeklyRecap.bestCampaign.conversions} conversions over {weeklyRecap.bestCampaign.sessions} sessions
+                    </div>
+                  )}
+                </div>
+                <div className="rounded-md border px-3 py-2 text-xs">
+                  <div className="text-muted-foreground">Biggest funnel drop-off</div>
+                  <div className="mt-1 text-sm font-semibold">
+                    {weeklyRecap.funnelDropOff
+                      ? `${weeklyRecap.funnelDropOff.name} (${weeklyRecap.funnelDropOff.dropOff} drop-offs)`
+                      : "No funnel activity yet"}
+                  </div>
+                </div>
+                <div className="rounded-md border px-3 py-2 text-xs">
+                  <div className="text-muted-foreground">Revenue change vs last week</div>
+                  <div className="mt-1 text-sm font-semibold">{formatDelta(weeklyRecapRevenueChange)}</div>
+                  <div className="text-[11px] text-muted-foreground">
+                    ${weeklyRecapCurrentRevenue.toFixed(2)} vs ${weeklyRecapPreviousRevenue.toFixed(2)}
+                  </div>
+                </div>
+              </CardContent>
+              <CardFooter className="text-xs text-muted-foreground">
+                Recap refreshes every Monday using the last two weeks of activity.
+              </CardFooter>
+            </Card>
+          )}
           <Card>
             <CardHeader>
               <CardTitle>Create a site</CardTitle>
