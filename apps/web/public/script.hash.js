@@ -94,6 +94,86 @@
     );
   }
 
+  function normalizeCookieDomain(value) {
+    if (!value) {
+      return "";
+    }
+    var trimmed = value.trim().toLowerCase();
+    if (!trimmed) {
+      return "";
+    }
+    trimmed = trimmed.replace(/^[a-z]+:\/\//i, "");
+    if (trimmed.indexOf("//") === 0) {
+      trimmed = trimmed.slice(2);
+    }
+    var slashIndex = trimmed.indexOf("/");
+    if (slashIndex !== -1) {
+      trimmed = trimmed.slice(0, slashIndex);
+    }
+    var colonIndex = trimmed.indexOf(":");
+    if (colonIndex !== -1) {
+      trimmed = trimmed.slice(0, colonIndex);
+    }
+    if (trimmed.charAt(0) === ".") {
+      trimmed = trimmed.slice(1);
+    }
+    if (!trimmed || isLocalhost(trimmed)) {
+      return "";
+    }
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(trimmed)) {
+      return "";
+    }
+    if (trimmed.indexOf(".") === -1) {
+      return "";
+    }
+    return trimmed;
+  }
+
+  function getRootDomain(hostname) {
+    if (!hostname) {
+      return "";
+    }
+    var parts = hostname.split(".");
+    if (parts.length <= 2) {
+      return hostname;
+    }
+    var compoundTlds = {
+      "ac.uk": true,
+      "co.uk": true,
+      "org.uk": true,
+      "gov.uk": true,
+      "com.au": true,
+      "net.au": true,
+      "org.au": true,
+      "co.nz": true,
+      "com.br": true,
+      "com.mx": true,
+      "com.tr": true,
+      "co.jp": true,
+      "co.kr": true,
+      "com.sg": true,
+      "com.tw": true,
+      "com.cn": true,
+      "com.hk": true,
+      "com.my": true,
+      "com.ph": true,
+      "com.vn": true,
+      "com.pk": true,
+      "com.sa": true,
+      "com.ng": true,
+      "co.in": true,
+      "co.za": true,
+    };
+    var last = parts[parts.length - 1];
+    var second = parts[parts.length - 2];
+    var third = parts[parts.length - 3];
+    var compound = second + "." + last;
+    if (compoundTlds[compound] && third) {
+      return parts.slice(-3).join(".");
+    }
+    return parts.slice(-2).join(".");
+  }
+
   function hostnameAllowed(hostname, allowlist) {
     if (!allowlist || allowlist.length === 0) {
       return true;
@@ -167,6 +247,7 @@
   var VISITOR_TTL = 60 * 60 * 24 * 365;
   var SESSION_TTL = 60 * 30;
   var EVENT_ENDPOINT = normalizeApiUrl(apiUrlRaw, "/api/v1/ingest");
+  var COOKIE_DOMAIN = getRootDomain(normalizeCookieDomain(domain));
   var lastPath = null;
   var TRACKING_KEYS = [
     "ref",
@@ -369,6 +450,9 @@
     var cookie = name + "=" + encodeURIComponent(value);
     cookie += "; Path=/";
     cookie += "; Max-Age=" + maxAgeSeconds;
+    if (COOKIE_DOMAIN) {
+      cookie += "; Domain=" + COOKIE_DOMAIN;
+    }
     cookie += "; SameSite=Lax";
     if (isSecureContext()) {
       cookie += "; Secure";
