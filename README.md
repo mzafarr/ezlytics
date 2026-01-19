@@ -146,6 +146,15 @@ The ingestion endpoint at `/api/v1/ingest` enforces a strict allowlist and caps.
 - Metadata key max length: 64
 - Metadata value max length: 255
 
+## Data retention
+
+Retention defaults are applied during event ingestion and webhook processing:
+
+- Raw events retained for 90 days (override with `RAW_EVENT_RETENTION_DAYS`)
+- Daily rollups retained for 1095 days (override with `ROLLUP_DAILY_RETENTION_DAYS`)
+- Hourly rollups retained for 30 days (override with `ROLLUP_HOURLY_RETENTION_DAYS`)
+- Cleanup interval defaults to 6 hours (override with `RETENTION_CLEANUP_INTERVAL_MINUTES`)
+
 ## Privacy and cookies
 
 my-better-t-app does not store full IP addresses in analytics tables. Incoming requests are used to derive coarse country-level data only, and any metadata values are sanitized to strip scripts/HTML.

@@ -21,6 +21,7 @@ const storageKeyExclusions = "datafast.exclusions";
 const storageKeyRevenueProvider = "datafast.revenueProvider";
 const storageKeyPrimaryGoal = "datafast.primaryGoal";
 const storageKeyDemoVisitorId = "datafast.demoVisitorId";
+const storageKeySavedViews = "datafast.savedViews";
 const defaultDemoVisitorId = "visitor-1";
 const directReferrerLabel = "(direct)";
 const notSetLabel = "(not set)";
@@ -65,9 +66,32 @@ const revenueProviderSchema = z.object({
   provider: z.enum(["none", "stripe", "lemonsqueezy"]),
   webhookSecret: z.string(),
 });
+const filtersSchema = z.object({
+  startDate: z.string(),
+  endDate: z.string(),
+  referrer: z.string(),
+  source: z.string(),
+  medium: z.string(),
+  campaign: z.string(),
+  content: z.string(),
+  term: z.string(),
+  country: z.string(),
+  device: z.string(),
+  browser: z.string(),
+  os: z.string(),
+  pagePath: z.string(),
+  goalName: z.string(),
+});
+const savedViewSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  filters: filtersSchema,
+});
+const savedViewsSchema = z.array(savedViewSchema);
 
 type Funnel = z.infer<typeof funnelSchema>;
 type FunnelStep = z.infer<typeof funnelStepSchema>;
+type SavedView = z.infer<typeof savedViewSchema>;
 
 const parseExclusionList = (value: string) =>
   value
@@ -229,10 +253,14 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
   const [funnels, setFunnels] = useState<Funnel[]>([]);
   const [activeFunnelId, setActiveFunnelId] = useState<string | null>(null);
   const [funnelDraft, setFunnelDraft] = useState<Funnel>(() => createEmptyFunnel());
+  const [savedViews, setSavedViews] = useState<SavedView[]>([]);
+  const [savedViewName, setSavedViewName] = useState("");
+  const [activeSavedViewId, setActiveSavedViewId] = useState<string | null>(null);
   const storageErrorRef = useRef(false);
   const exclusionStorageErrorRef = useRef(false);
   const revenueStorageErrorRef = useRef(false);
   const primaryGoalStorageErrorRef = useRef(false);
+  const savedViewsStorageErrorRef = useRef(false);
   const [currentVisitorId, setCurrentVisitorId] = useState(defaultDemoVisitorId);
   const [primaryGoalName, setPrimaryGoalName] = useState("");
   const [snapshotUrl, setSnapshotUrl] = useState("");
@@ -451,6 +479,8 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
     const series = {
       pageviews: {} as Record<string, number>,
       visitors: {} as Record<string, number>,
+      sessions: {} as Record<string, number>,
+      goals: {} as Record<string, number>,
       revenue: {} as Record<string, number>,
     };
     const dimensions = rollupDimensions.reduce(
@@ -489,6 +519,8 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
       totals.revenue += entry.revenue;
       series.pageviews[dateKey] = (series.pageviews[dateKey] ?? 0) + entry.pageviews;
       series.visitors[dateKey] = (series.visitors[dateKey] ?? 0) + entry.visitors;
+      series.sessions[dateKey] = (series.sessions[dateKey] ?? 0) + entry.sessions;
+      series.goals[dateKey] = (series.goals[dateKey] ?? 0) + entry.goals;
       series.revenue[dateKey] = (series.revenue[dateKey] ?? 0) + entry.revenue;
     }
 
@@ -513,6 +545,10 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
     accumulator[event.date] = (accumulator[event.date] ?? 0) + 1;
     return accumulator;
   }, {});
+  const goalsByDate = goals.reduce<Record<string, number>>((accumulator, event) => {
+    accumulator[event.date] = (accumulator[event.date] ?? 0) + 1;
+    return accumulator;
+  }, {});
   const visitorSetsByDate = pageviews.reduce<Record<string, Set<string>>>((accumulator, event) => {
     const existing = accumulator[event.date] ?? new Set<string>();
     existing.add(event.visitorId);
@@ -523,6 +559,16 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
     accumulator[date] = set.size;
     return accumulator;
   }, {});
+  const sessionsByDate = visitorsByDate;
+  const conversionRateByDate = Object.keys({ ...sessionsByDate, ...goalsByDate }).reduce<Record<string, number>>(
+    (accumulator, date) => {
+      const sessions = sessionsByDate[date] ?? 0;
+      const conversions = goalsByDate[date] ?? 0;
+      accumulator[date] = sessions === 0 ? 0 : (conversions / sessions) * 100;
+      return accumulator;
+    },
+    {},
+  );
   const pageviewsByPath = pageviews.reduce<Record<string, number>>((accumulator, event) => {
     accumulator[event.path] = (accumulator[event.path] ?? 0) + 1;
     return accumulator;
@@ -723,6 +769,17 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
   const exitPagesByPathDisplay = useRollups ? rollupSummary.dimensions.page.pageviews : exitPagesByPath;
   const visitorsByDateDisplay = useRollups ? rollupSummary.series.visitors : visitorsByDate;
   const pageviewsByDateDisplay = useRollups ? rollupSummary.series.pageviews : pageviewsByDate;
+  const conversionRateByDateDisplay = useRollups
+    ? Object.keys({ ...rollupSummary.series.sessions, ...rollupSummary.series.goals }).reduce<Record<string, number>>(
+        (accumulator, date) => {
+          const sessions = rollupSummary.series.sessions[date] ?? 0;
+          const conversions = rollupSummary.series.goals[date] ?? 0;
+          accumulator[date] = sessions === 0 ? 0 : (conversions / sessions) * 100;
+          return accumulator;
+        },
+        {},
+      )
+    : conversionRateByDate;
   const chartSeries =
     chartMetric === "pageviews"
       ? pageviewsByDateDisplay
@@ -838,6 +895,23 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
   }, []);
 
   useEffect(() => {
+    try {
+      const stored = localStorage.getItem(storageKeySavedViews);
+      if (stored) {
+        const parsed = savedViewsSchema.safeParse(JSON.parse(stored));
+        if (parsed.success) {
+          setSavedViews(parsed.data);
+        }
+      }
+    } catch (error) {
+      if (!savedViewsStorageErrorRef.current) {
+        toast.error("Unable to load saved views.");
+        savedViewsStorageErrorRef.current = true;
+      }
+    }
+  }, []);
+
+  useEffect(() => {
     if (funnels.length === 0) {
       return;
     }
@@ -888,6 +962,17 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
     }
   }, [primaryGoalName]);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(storageKeySavedViews, JSON.stringify(savedViews));
+    } catch (error) {
+      if (!savedViewsStorageErrorRef.current) {
+        toast.error("Unable to save saved views in this browser.");
+        savedViewsStorageErrorRef.current = true;
+      }
+    }
+  }, [savedViews]);
+
   const activeFunnel = useMemo(() => {
     if (!activeFunnelId) {
       return null;
@@ -896,6 +981,16 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
   }, [activeFunnelId, funnels]);
 
   const formatRate = (value: number) => `${value.toFixed(1)}%`;
+  const getSavedViewSummary = (viewFilters: typeof defaultFilters) => {
+    const filterCount = Object.values(viewFilters).filter((value) => value.trim().length > 0).length;
+    const startLabel = viewFilters.startDate || "Any";
+    const endLabel = viewFilters.endDate || "Any";
+    return {
+      filterCount,
+      filterLabel: filterCount === 0 ? "No filters" : `${filterCount} filter${filterCount === 1 ? "" : "s"}`,
+      dateLabel: `${startLabel} - ${endLabel}`,
+    };
+  };
 
   const createStepMatcher = (step: FunnelStep) => {
     if (step.type === "page") {
@@ -1022,6 +1117,45 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
     const sign = value > 0 ? "+" : value < 0 ? "-" : "";
     return `${sign}${Math.abs(value).toFixed(1)}%`;
   };
+  const getDayOverDay = (series: Record<string, number>) => {
+    const dates = Object.keys(series).sort((left, right) => left.localeCompare(right));
+    if (dates.length < 2) {
+      return null;
+    }
+    const currentDate = dates[dates.length - 1] ?? "";
+    const previousDate = dates[dates.length - 2] ?? "";
+    const current = series[currentDate] ?? 0;
+    const previous = series[previousDate] ?? 0;
+    if (previous === 0) {
+      return null;
+    }
+    const change = ((current - previous) / previous) * 100;
+    return { currentDate, previousDate, current, previous, change };
+  };
+  const anomalyCallouts = useMemo(() => {
+    const items: Array<{ id: string; headline: string; detail: string }> = [];
+    const trafficDelta = getDayOverDay(pageviewsByDateDisplay);
+    if (trafficDelta) {
+      const direction = trafficDelta.change > 0 ? "up" : trafficDelta.change < 0 ? "down" : "flat";
+      items.push({
+        id: "traffic",
+        headline: `Traffic ${direction} ${Math.abs(trafficDelta.change).toFixed(1)}% day-over-day`,
+        detail: `${trafficDelta.current} pageviews on ${trafficDelta.currentDate} vs ${trafficDelta.previous} on ${trafficDelta.previousDate}`,
+      });
+    }
+    const conversionDelta = getDayOverDay(conversionRateByDateDisplay);
+    if (conversionDelta) {
+      const direction = conversionDelta.change > 0 ? "up" : conversionDelta.change < 0 ? "down" : "flat";
+      items.push({
+        id: "conversion-rate",
+        headline: `Conversion rate ${direction} ${Math.abs(conversionDelta.change).toFixed(1)}% day-over-day`,
+        detail: `${formatRate(conversionDelta.current)} on ${conversionDelta.currentDate} vs ${formatRate(
+          conversionDelta.previous,
+        )} on ${conversionDelta.previousDate}`,
+      });
+    }
+    return items;
+  }, [pageviewsByDateDisplay, conversionRateByDateDisplay]);
   const weeklyRecap = useMemo<WeeklyRecap>(() => {
     if (filteredEvents.length === 0) {
       return { isMonday: false };
@@ -1148,6 +1282,42 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
     });
     setActiveFunnelId(updated.id);
     toast.success("Funnel saved");
+  };
+
+  const saveSavedView = () => {
+    const name = savedViewName.trim();
+    if (!name) {
+      toast.error("Saved view name is required");
+      return;
+    }
+    const nextView: SavedView = {
+      id: createId(),
+      name,
+      filters: { ...filters },
+    };
+    setSavedViews((current) => {
+      const existingIndex = current.findIndex((view) => view.name.toLowerCase() === name.toLowerCase());
+      if (existingIndex === -1) {
+        return [...current, nextView];
+      }
+      const existing = current[existingIndex];
+      const updated = { ...existing, name, filters: { ...filters } };
+      return current.map((view, index) => (index === existingIndex ? updated : view));
+    });
+    setActiveSavedViewId(nextView.id);
+    setSavedViewName("");
+    toast.success("Saved view stored");
+  };
+
+  const applySavedView = (view: SavedView) => {
+    setFilters(view.filters);
+    setActiveSavedViewId(view.id);
+    toast.success(`Applied "${view.name}"`);
+  };
+
+  const deleteSavedView = (viewId: string) => {
+    setSavedViews((current) => current.filter((view) => view.id !== viewId));
+    setActiveSavedViewId((current) => (current === viewId ? null : current));
   };
 
   const addDraftStep = () => {
@@ -1447,6 +1617,73 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
           </CardFooter>
         </Card>
 
+        <Card>
+          <CardHeader>
+            <CardTitle>Saved views</CardTitle>
+            <CardDescription>Store filter sets and date ranges for quick access.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="saved-view-name">Save current view</Label>
+              <div className="flex flex-wrap gap-2">
+                <Input
+                  id="saved-view-name"
+                  placeholder="Executive overview"
+                  value={savedViewName}
+                  onChange={(event) => setSavedViewName(event.target.value)}
+                />
+                <Button type="button" onClick={saveSavedView}>
+                  Save view
+                </Button>
+              </div>
+              <div className="text-xs text-muted-foreground">
+                {activeFilterCount === 0
+                  ? "No filters active. Save to keep a clean default view."
+                  : `${activeFilterCount} filter${activeFilterCount === 1 ? "" : "s"} will be saved.`}
+              </div>
+            </div>
+            <div className="space-y-2">
+              <div className="text-xs font-medium">Saved views</div>
+              {savedViews.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Save a view to reuse filters and date ranges.</p>
+              ) : (
+                <div className="space-y-2">
+                  {savedViews.map((view) => {
+                    const summary = getSavedViewSummary(view.filters);
+                    return (
+                      <div key={view.id} className="flex flex-wrap items-center justify-between gap-2 rounded-none border p-2">
+                        <button
+                          type="button"
+                          onClick={() => applySavedView(view)}
+                          className={`flex-1 text-left text-xs transition ${
+                            view.id === activeSavedViewId
+                              ? "text-foreground"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                        >
+                          <div className="font-medium">{view.name}</div>
+                          <div className="text-[11px] text-muted-foreground">
+                            {summary.filterLabel} · {summary.dateLabel}
+                          </div>
+                        </button>
+                        <Button type="button" size="xs" variant="secondary" onClick={() => applySavedView(view)}>
+                          Apply
+                        </Button>
+                        <Button type="button" size="xs" variant="destructive" onClick={() => deleteSavedView(view.id)}>
+                          Delete
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </CardContent>
+          <CardFooter className="text-xs text-muted-foreground">
+            Saved views are stored locally in this browser.
+          </CardFooter>
+        </Card>
+
         <div className="grid gap-6 md:grid-cols-2">
           {weeklyRecapReady && (
             <Card className="md:col-span-2">
@@ -1502,6 +1739,27 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
               </CardFooter>
             </Card>
           )}
+          <Card className="md:col-span-2">
+            <CardHeader>
+              <CardTitle>Anomaly callouts</CardTitle>
+              <CardDescription>Day-over-day shifts based on the active filters.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3 md:grid-cols-2">
+              {anomalyCallouts.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Not enough data to compare day-over-day yet.</p>
+              ) : (
+                anomalyCallouts.map((callout) => (
+                  <div key={callout.id} className="rounded-md border px-3 py-2 text-xs">
+                    <div className="text-muted-foreground">{callout.headline}</div>
+                    <div className="mt-1 text-sm font-semibold">{callout.detail}</div>
+                  </div>
+                ))
+              )}
+            </CardContent>
+            <CardFooter className="text-xs text-muted-foreground">
+              Comparisons use the two most recent days in the selected range.
+            </CardFooter>
+          </Card>
           <Card>
             <CardHeader>
               <CardTitle>Create a site</CardTitle>

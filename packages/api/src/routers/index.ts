@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { z } from "zod";
 
-import { and, db, eq, site } from "@my-better-t-app/db";
+import { and, db, eq, gte, lte, site } from "@my-better-t-app/db";
 import { TRPCError } from "@trpc/server";
 
 import { protectedProcedure, publicProcedure, router } from "../index";
@@ -100,6 +100,60 @@ export const appRouter = router({
         }
 
         return updated[0];
+      }),
+  }),
+  analytics: router({
+    rollups: protectedProcedure
+      .input(
+        z.object({
+          siteId: z.string().min(1, "Site id is required"),
+          startDate: z.string().optional(),
+          endDate: z.string().optional(),
+        }),
+      )
+      .query(async ({ ctx, input }) => {
+        const siteRecord = await db.query.site.findFirst({
+          columns: { id: true },
+          where: (sites, { eq }) => and(eq(sites.id, input.siteId), eq(sites.userId, ctx.session.user.id)),
+        });
+
+        if (!siteRecord) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Site not found" });
+        }
+
+        const startDate = input.startDate ? input.startDate : null;
+        const endDate = input.endDate ? input.endDate : null;
+
+        const daily = await db.query.rollupDaily.findMany({
+          where: (rollups, { and, eq, gte, lte }) => {
+            const clauses = [eq(rollups.siteId, siteRecord.id)];
+            if (startDate) {
+              clauses.push(gte(rollups.date, startDate));
+            }
+            if (endDate) {
+              clauses.push(lte(rollups.date, endDate));
+            }
+            return and(...clauses);
+          },
+        });
+
+        const dimensions = await db.query.rollupDimensionDaily.findMany({
+          where: (rollups, { and, eq, gte, lte }) => {
+            const clauses = [eq(rollups.siteId, siteRecord.id)];
+            if (startDate) {
+              clauses.push(gte(rollups.date, startDate));
+            }
+            if (endDate) {
+              clauses.push(lte(rollups.date, endDate));
+            }
+            return and(...clauses);
+          },
+        });
+
+        return {
+          daily,
+          dimensions,
+        };
       }),
   }),
 });

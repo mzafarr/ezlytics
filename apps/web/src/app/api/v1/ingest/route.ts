@@ -7,6 +7,7 @@ import { buildApiKeyHeader, verifyApiKey } from "@my-better-t-app/api/api-key";
 import { db, rawEvent } from "@my-better-t-app/db";
 import { env } from "@my-better-t-app/env/server";
 import { sanitizeMetadataRecord } from "@/lib/metadata-sanitize";
+import { runRetentionCleanup } from "@/lib/retention";
 import { extractDimensionRollups, metricsForEvent, upsertDimensionRollups, upsertRollups } from "@/lib/rollups";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
@@ -452,6 +453,8 @@ export const POST = async (request: NextRequest) => {
   if (!rateLimit.ok) {
     return rateLimitResponse(rateLimit.retryAfter);
   }
+
+  await runRetentionCleanup();
 
   const { device, browser, os } = parseUserAgent(request.headers.get("user-agent"));
   const country = normalizeCountry(request.headers.get("x-vercel-ip-country"));

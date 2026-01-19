@@ -5,7 +5,10 @@ import { z } from "zod";
 
 import { verifyApiKey } from "@my-better-t-app/api/api-key";
 import { and, db, eq, rawEvent } from "@my-better-t-app/db";
+import { sanitizeMetadataRecord } from "@/lib/metadata-sanitize";
+import { runRetentionCleanup } from "@/lib/retention";
 import { extractDimensionRollups, metricsForEvent, upsertDimensionRollups, upsertRollups } from "@/lib/rollups";
+import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
 const MAX_METADATA_KEYS = 10;
 const MAX_METADATA_KEY_LENGTH = 64;
@@ -110,11 +113,33 @@ const hasPriorPageview = async (siteId: string, visitorId: string) => {
   return Boolean(existing);
 };
 
+const rateLimitResponse = (retryAfter: number) =>
+  NextResponse.json(
+    { error: "Rate limit exceeded", retry_after: retryAfter },
+    {
+      status: 429,
+      headers: {
+        "Retry-After": retryAfter.toString(),
+      },
+    },
+  );
+
 export const POST = async (request: NextRequest) => {
   const authResult = await verifyApiKey(request.headers.get("authorization"));
   if (!authResult.ok) {
     return NextResponse.json({ error: authResult.error }, { status: 401 });
   }
+
+  const rateLimit = checkRateLimit({
+    ip: getClientIp(request),
+    siteId: authResult.siteId,
+    scope: "api",
+  });
+  if (!rateLimit.ok) {
+    return rateLimitResponse(rateLimit.retryAfter);
+  }
+
+  await runRetentionCleanup();
 
   let body: unknown;
   try {
@@ -143,12 +168,13 @@ export const POST = async (request: NextRequest) => {
     );
   }
 
-  const metadata = parsed.data.metadata ?? null;
+  const metadata = sanitizeMetadataRecord(parsed.data.metadata ?? null, MAX_METADATA_VALUE_LENGTH);
   const createdAt = new Date();
 
   await db.insert(rawEvent).values({
     id: randomUUID(),
     siteId: authResult.siteId,
+    eventId: null,
     type: "goal",
     name: parsed.data.name,
     visitorId,

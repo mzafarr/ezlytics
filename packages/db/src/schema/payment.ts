@@ -11,6 +11,7 @@ export const payment = pgTable(
       .notNull()
       .references(() => site.id, { onDelete: "cascade" }),
     visitorId: text("visitor_id"),
+    eventId: text("event_id"),
     amount: integer("amount").notNull(),
     currency: text("currency").notNull(),
     provider: text("provider").notNull(),
@@ -25,6 +26,7 @@ export const payment = pgTable(
   (table) => [
     index("payment_siteId_idx").on(table.siteId),
     index("payment_visitorId_idx").on(table.visitorId),
+    index("payment_eventId_idx").on(table.eventId),
     index("payment_transactionId_idx").on(table.transactionId),
   ],
 );

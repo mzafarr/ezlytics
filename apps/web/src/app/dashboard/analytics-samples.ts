@@ -12,7 +12,6 @@ export type AnalyticsSample = {
   os: string;
   path: string;
   hostname: string;
-  ip: string;
   visitorId: string;
   goal: string;
   revenue: number;
@@ -34,7 +33,6 @@ export const analyticsSamples: AnalyticsSample[] = [
     os: "macos",
     path: "/",
     hostname: "app.ralph.dev",
-    ip: "203.0.113.11",
     visitorId: "visitor-1",
     goal: "signup",
     revenue: 0,
@@ -54,7 +52,6 @@ export const analyticsSamples: AnalyticsSample[] = [
     os: "macos",
     path: "/pricing",
     hostname: "app.ralph.dev",
-    ip: "203.0.113.11",
     visitorId: "visitor-1",
     goal: "signup",
     revenue: 120,
@@ -74,7 +71,6 @@ export const analyticsSamples: AnalyticsSample[] = [
     os: "ios",
     path: "/",
     hostname: "marketing.ralph.dev",
-    ip: "198.51.100.24",
     visitorId: "visitor-2",
     goal: "",
     revenue: 0,
@@ -94,7 +90,6 @@ export const analyticsSamples: AnalyticsSample[] = [
     os: "ios",
     path: "/features",
     hostname: "marketing.ralph.dev",
-    ip: "198.51.100.24",
     visitorId: "visitor-2",
     goal: "",
     revenue: 0,
@@ -114,7 +109,6 @@ export const analyticsSamples: AnalyticsSample[] = [
     os: "linux",
     path: "/blog/launch",
     hostname: "blog.ralph.dev",
-    ip: "192.0.2.77",
     visitorId: "visitor-3",
     goal: "demo_request",
     revenue: 0,
@@ -134,7 +128,6 @@ export const analyticsSamples: AnalyticsSample[] = [
     os: "linux",
     path: "/pricing",
     hostname: "blog.ralph.dev",
-    ip: "192.0.2.77",
     visitorId: "visitor-3",
     goal: "",
     revenue: 0,
@@ -154,7 +147,6 @@ export const analyticsSamples: AnalyticsSample[] = [
     os: "windows",
     path: "/",
     hostname: "app.ralph.dev",
-    ip: "203.0.113.55",
     visitorId: "visitor-4",
     goal: "",
     revenue: 0,
@@ -174,7 +166,6 @@ export const analyticsSamples: AnalyticsSample[] = [
     os: "windows",
     path: "/pricing",
     hostname: "app.ralph.dev",
-    ip: "203.0.113.55",
     visitorId: "visitor-4",
     goal: "purchase",
     revenue: 240,
