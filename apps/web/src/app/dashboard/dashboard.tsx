@@ -19,6 +19,7 @@ import { analyticsSamples, type AnalyticsSample } from "./analytics-samples";
 const storageKeyFunnels = "datafast.funnels";
 const storageKeyExclusions = "datafast.exclusions";
 const storageKeyRevenueProvider = "datafast.revenueProvider";
+const storageKeyPrimaryGoal = "datafast.primaryGoal";
 const storageKeyDemoVisitorId = "datafast.demoVisitorId";
 const defaultDemoVisitorId = "visitor-1";
 const directReferrerLabel = "(direct)";
@@ -137,6 +138,15 @@ type VisitorSummary = {
   revenue: number;
 };
 
+type GoalSummary = {
+  name: string;
+  total: number;
+  unique: number;
+  conversionRate: number;
+  sources: Record<string, number>;
+  pages: Record<string, number>;
+};
+
 const defaultFilters = {
   startDate: "",
   endDate: "",
@@ -199,7 +209,9 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
   const storageErrorRef = useRef(false);
   const exclusionStorageErrorRef = useRef(false);
   const revenueStorageErrorRef = useRef(false);
+  const primaryGoalStorageErrorRef = useRef(false);
   const [currentVisitorId, setCurrentVisitorId] = useState(defaultDemoVisitorId);
+  const [primaryGoalName, setPrimaryGoalName] = useState("");
 
   const createSite = useMutation(
     trpc.sites.create.mutationOptions({
@@ -492,15 +504,56 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
     return accumulator;
   }, new Set<string>());
   const sessionCount = sessionKeys.size;
-  const conversionCount = goals.filter((event) => event.goal).length;
+  const goalConversions = goals.filter((event) => event.goal);
+  const conversionCount = goalConversions.length;
   const conversionRate = sessionCount === 0 ? 0 : (conversionCount / sessionCount) * 100;
-  const goalCounts = goals.reduce<Record<string, number>>((accumulator, event) => {
-    if (!event.goal) {
+  const goalSummaryByName = goalConversions.reduce<
+    Record<string, { total: number; visitors: Set<string>; sources: Record<string, number>; pages: Record<string, number> }>
+  >((accumulator, event) => {
+    const goalName = event.goal.trim();
+    if (!goalName) {
       return accumulator;
     }
-    accumulator[event.goal] = (accumulator[event.goal] ?? 0) + 1;
+    const existing = accumulator[goalName] ?? {
+      total: 0,
+      visitors: new Set<string>(),
+      sources: {},
+      pages: {},
+    };
+    existing.total += 1;
+    existing.visitors.add(event.visitorId);
+    const sourceLabel = event.source.trim() || notSetLabel;
+    existing.sources[sourceLabel] = (existing.sources[sourceLabel] ?? 0) + 1;
+    const pageLabel = event.path.trim() || "/";
+    existing.pages[pageLabel] = (existing.pages[pageLabel] ?? 0) + 1;
+    accumulator[goalName] = existing;
     return accumulator;
   }, {});
+  const goalSummaries: GoalSummary[] = Object.entries(goalSummaryByName)
+    .map(([name, summary]) => ({
+      name,
+      total: summary.total,
+      unique: summary.visitors.size,
+      conversionRate: sessionCount === 0 ? 0 : (summary.total / sessionCount) * 100,
+      sources: summary.sources,
+      pages: summary.pages,
+    }))
+    .sort((a, b) => b.total - a.total);
+  const primaryGoal = goalSummaries.find((goal) => goal.name === primaryGoalName) ?? null;
+  const primaryGoalLabel = primaryGoal?.name || primaryGoalName.trim() || "All goals";
+  const primaryConversionCount = primaryGoal ? primaryGoal.total : primaryGoalName ? 0 : conversionCount;
+  const primaryConversionRate = primaryGoal ? primaryGoal.conversionRate : primaryGoalName ? 0 : conversionRate;
+  const breakdownGoal = primaryGoalName ? primaryGoal : (goalSummaries[0] ?? null);
+  const goalSourceBreakdown = breakdownGoal
+    ? Object.entries(breakdownGoal.sources)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+    : [];
+  const goalPageBreakdown = breakdownGoal
+    ? Object.entries(breakdownGoal.pages)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+    : [];
   const totalRevenue = filteredEvents.reduce((sum, event) => sum + event.revenue, 0);
   const revenuePerVisitor = visitorsList.length === 0 ? 0 : totalRevenue / visitorsList.length;
   const revenueByDate = filteredEvents.reduce<Record<string, number>>((accumulator, event) => {
@@ -621,6 +674,20 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
   }, []);
 
   useEffect(() => {
+    try {
+      const stored = localStorage.getItem(storageKeyPrimaryGoal);
+      if (stored) {
+        setPrimaryGoalName(stored);
+      }
+    } catch (error) {
+      if (!primaryGoalStorageErrorRef.current) {
+        toast.error("Unable to load primary goal preference.");
+        primaryGoalStorageErrorRef.current = true;
+      }
+    }
+  }, []);
+
+  useEffect(() => {
     if (funnels.length === 0) {
       return;
     }
@@ -655,6 +722,21 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
       }
     }
   }, [revenueProviderSettings]);
+
+  useEffect(() => {
+    try {
+      if (!primaryGoalName.trim()) {
+        localStorage.removeItem(storageKeyPrimaryGoal);
+        return;
+      }
+      localStorage.setItem(storageKeyPrimaryGoal, primaryGoalName);
+    } catch (error) {
+      if (!primaryGoalStorageErrorRef.current) {
+        toast.error("Unable to save primary goal preference.");
+        primaryGoalStorageErrorRef.current = true;
+      }
+    }
+  }, [primaryGoalName]);
 
   const activeFunnel = useMemo(() => {
     if (!activeFunnelId) {
@@ -1371,11 +1453,13 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
                 </div>
                 <div className="rounded-md border px-3 py-2 text-xs">
                   <div className="text-muted-foreground">Conversions</div>
-                  <div className="text-lg font-semibold">{conversionCount}</div>
+                  <div className="text-lg font-semibold">{primaryConversionCount}</div>
+                  <div className="text-[11px] text-muted-foreground">{primaryGoalLabel}</div>
                 </div>
                 <div className="rounded-md border px-3 py-2 text-xs">
                   <div className="text-muted-foreground">Conversion rate</div>
-                  <div className="text-lg font-semibold">{formatRate(conversionRate)}</div>
+                  <div className="text-lg font-semibold">{formatRate(primaryConversionRate)}</div>
+                  <div className="text-[11px] text-muted-foreground">{primaryGoalLabel}</div>
                 </div>
                 <div className="rounded-md border px-3 py-2 text-xs">
                   <div className="text-muted-foreground">Revenue</div>
@@ -1560,6 +1644,104 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
                       </button>
                     ))
                 )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Goals</CardTitle>
+              <CardDescription>Totals, unique conversions, and rate per goal.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="primary-goal">Primary conversion</Label>
+                <select
+                  id="primary-goal"
+                  className="border-input h-8 w-full rounded-none border bg-transparent px-2.5 text-xs text-foreground"
+                  value={primaryGoalName}
+                  onChange={(event) => setPrimaryGoalName(event.target.value)}
+                  disabled={goalSummaries.length === 0}
+                >
+                  <option value="">All goals</option>
+                  {goalSummaries.map((goal) => (
+                    <option key={goal.name} value={goal.name}>
+                      {goal.name}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-muted-foreground">Used for the KPI conversion metrics.</p>
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs font-medium">
+                  <span>Goal</span>
+                  <span>Totals</span>
+                </div>
+                {goalSummaries.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No goal conversions for the selected filters.</p>
+                ) : (
+                  goalSummaries.map((goal) => (
+                    <button
+                      key={goal.name}
+                      type="button"
+                      onClick={() => applyFilter("goalName", goal.name)}
+                      className="flex w-full items-center justify-between text-left text-xs transition hover:text-foreground"
+                    >
+                      <span>{goal.name}</span>
+                      <span className="flex items-center gap-2 text-[11px] text-muted-foreground">
+                        <span>{goal.total} total</span>
+                        <span>{goal.unique} unique</span>
+                        <span>{formatRate(goal.conversionRate)}</span>
+                      </span>
+                    </button>
+                  ))
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Goal breakdown</span>
+                  <span>{breakdownGoal ? breakdownGoal.name : "No goals"}</span>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <div className="text-xs font-medium">Top sources</div>
+                    {goalSourceBreakdown.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No goal sources yet.</p>
+                    ) : (
+                      goalSourceBreakdown.map(([source, count]) => (
+                        <button
+                          key={source}
+                          type="button"
+                          onClick={() => applyFilter("source", source)}
+                          className="flex w-full items-center justify-between text-left text-xs transition hover:text-foreground"
+                        >
+                          <span>{source}</span>
+                          <span className="font-medium">{count}</span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    <div className="text-xs font-medium">Top pages</div>
+                    {goalPageBreakdown.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No goal pages yet.</p>
+                    ) : (
+                      goalPageBreakdown.map(([page, count]) => (
+                        <button
+                          key={page}
+                          type="button"
+                          onClick={() => applyFilter("pagePath", page)}
+                          className="flex w-full items-center justify-between text-left text-xs transition hover:text-foreground"
+                        >
+                          <span>{page}</span>
+                          <span className="font-medium">{count}</span>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>
