@@ -169,6 +169,7 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
   const [hasCopied, setHasCopied] = useState(false);
   const [hasCopiedKey, setHasCopiedKey] = useState(false);
   const [filters, setFilters] = useState(defaultFilters);
+  const [chartMetric, setChartMetric] = useState<"pageviews" | "visitors" | "revenue">("pageviews");
   const [exclusions, setExclusions] = useState(defaultExclusions);
   const [revenueProviderSettings, setRevenueProviderSettings] = useState(defaultRevenueProvider);
   const [funnels, setFunnels] = useState<Funnel[]>([]);
@@ -328,6 +329,16 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
     accumulator[event.date] = (accumulator[event.date] ?? 0) + 1;
     return accumulator;
   }, {});
+  const visitorSetsByDate = pageviews.reduce<Record<string, Set<string>>>((accumulator, event) => {
+    const existing = accumulator[event.date] ?? new Set<string>();
+    existing.add(event.visitorId);
+    accumulator[event.date] = existing;
+    return accumulator;
+  }, {});
+  const visitorsByDate = Object.entries(visitorSetsByDate).reduce<Record<string, number>>((accumulator, [date, set]) => {
+    accumulator[date] = set.size;
+    return accumulator;
+  }, {});
   const pageviewsByPath = pageviews.reduce<Record<string, number>>((accumulator, event) => {
     accumulator[event.path] = (accumulator[event.path] ?? 0) + 1;
     return accumulator;
@@ -386,6 +397,13 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
   }, {});
   const visitorsList = Object.values(visitorsById).sort((a, b) => b.lastSeenAt - a.lastSeenAt);
   const visitorCountLabel = `${visitorsList.length} visitor${visitorsList.length === 1 ? "" : "s"}`;
+  const sessionKeys = pageviews.reduce((accumulator, event) => {
+    accumulator.add(`${event.visitorId}-${event.date}`);
+    return accumulator;
+  }, new Set<string>());
+  const sessionCount = sessionKeys.size;
+  const conversionCount = goals.filter((event) => event.goal).length;
+  const conversionRate = sessionCount === 0 ? 0 : (conversionCount / sessionCount) * 100;
   const goalCounts = goals.reduce<Record<string, number>>((accumulator, event) => {
     if (!event.goal) {
       return accumulator;
@@ -394,6 +412,14 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
     return accumulator;
   }, {});
   const totalRevenue = filteredEvents.reduce((sum, event) => sum + event.revenue, 0);
+  const revenuePerVisitor = visitorsList.length === 0 ? 0 : totalRevenue / visitorsList.length;
+  const revenueByDate = filteredEvents.reduce<Record<string, number>>((accumulator, event) => {
+    if (!event.revenue) {
+      return accumulator;
+    }
+    accumulator[event.date] = (accumulator[event.date] ?? 0) + event.revenue;
+    return accumulator;
+  }, {});
   const revenueBySource = filteredEvents.reduce<Record<string, number>>((accumulator, event) => {
     if (!event.revenue) {
       return accumulator;
@@ -402,6 +428,8 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
     return accumulator;
   }, {});
   const topRevenueSources = Object.entries(revenueBySource).sort((a, b) => b[1] - a[1]).slice(0, 3);
+  const chartSeries =
+    chartMetric === "pageviews" ? pageviewsByDate : chartMetric === "visitors" ? visitorsByDate : revenueByDate;
 
   const applyFilter = (key: keyof typeof defaultFilters, value: string) => {
     if (!value.trim()) {
@@ -1201,14 +1229,66 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
         <div className="grid gap-6 lg:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle>Charts</CardTitle>
-              <CardDescription>Pageviews over time.</CardDescription>
+              <CardTitle>Overview KPIs</CardTitle>
+              <CardDescription>Headline metrics scoped to the active filters.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-2">
-              {Object.keys(pageviewsByDate).length === 0 ? (
-                <p className="text-sm text-muted-foreground">No pageviews in the selected range.</p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-md border px-3 py-2 text-xs">
+                  <div className="text-muted-foreground">Visitors</div>
+                  <div className="text-lg font-semibold">{visitorsList.length}</div>
+                </div>
+                <div className="rounded-md border px-3 py-2 text-xs">
+                  <div className="text-muted-foreground">Sessions</div>
+                  <div className="text-lg font-semibold">{sessionCount}</div>
+                </div>
+                <div className="rounded-md border px-3 py-2 text-xs">
+                  <div className="text-muted-foreground">Pageviews</div>
+                  <div className="text-lg font-semibold">{pageviews.length}</div>
+                </div>
+                <div className="rounded-md border px-3 py-2 text-xs">
+                  <div className="text-muted-foreground">Conversions</div>
+                  <div className="text-lg font-semibold">{conversionCount}</div>
+                </div>
+                <div className="rounded-md border px-3 py-2 text-xs">
+                  <div className="text-muted-foreground">Conversion rate</div>
+                  <div className="text-lg font-semibold">{formatRate(conversionRate)}</div>
+                </div>
+                <div className="rounded-md border px-3 py-2 text-xs">
+                  <div className="text-muted-foreground">Revenue</div>
+                  <div className="text-lg font-semibold">${totalRevenue.toFixed(2)}</div>
+                </div>
+                <div className="rounded-md border px-3 py-2 text-xs">
+                  <div className="text-muted-foreground">Revenue per visitor</div>
+                  <div className="text-lg font-semibold">${revenuePerVisitor.toFixed(2)}</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Time series</CardTitle>
+              <CardDescription>Toggle between pageviews, visitors, and revenue.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex flex-wrap gap-2 text-xs">
+                {(["pageviews", "visitors", "revenue"] as const).map((metric) => (
+                  <Button
+                    key={metric}
+                    type="button"
+                    size="xs"
+                    variant={chartMetric === metric ? "default" : "secondary"}
+                    onClick={() => setChartMetric(metric)}
+                  >
+                    {metric === "pageviews" ? "Pageviews" : metric === "visitors" ? "Visitors" : "Revenue"}
+                  </Button>
+                ))}
+              </div>
+              {Object.keys(chartSeries).length === 0 ? (
+                <p className="text-sm text-muted-foreground">No data available for the selected range.</p>
               ) : (
-                Object.entries(pageviewsByDate)
+                Object.entries(chartSeries)
                   .sort(([left], [right]) => left.localeCompare(right))
                   .map(([date, count]) => (
                     <button
@@ -1218,7 +1298,9 @@ export default function Dashboard({ session }: { session: typeof authClient.$Inf
                       className="flex w-full items-center justify-between text-left text-xs transition hover:text-foreground"
                     >
                       <span>{date}</span>
-                      <span className="font-medium">{count}</span>
+                      <span className="font-medium">
+                        {chartMetric === "revenue" ? `$${count.toFixed(2)}` : count}
+                      </span>
                     </button>
                   ))
               )}
