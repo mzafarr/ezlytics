@@ -475,6 +475,83 @@
     }
   }
 
+  function normalizeGoalName(value) {
+    if (!value) {
+      return "";
+    }
+    var trimmed = value.trim();
+    if (!trimmed) {
+      return "";
+    }
+    return trimmed;
+  }
+
+  function isValidGoalName(value) {
+    if (!value || value.length > 64) {
+      return false;
+    }
+    return /^[a-z0-9_-]+$/.test(value);
+  }
+
+  function findGoalElement(target) {
+    var node = target;
+    while (node && node !== document.documentElement) {
+      if (node.getAttribute && node.hasAttribute("data-fast-goal")) {
+        return node;
+      }
+      node = node.parentNode;
+    }
+    return null;
+  }
+
+  function sendGoal(name) {
+    var payload = {
+      type: "goal",
+      name: name,
+      websiteId: websiteId,
+      domain: domain,
+      path: getCurrentPath(),
+      referrer: document.referrer || "",
+      timestamp: new Date().toISOString(),
+      visitorId: getVisitorId(),
+      sessionId: getSessionId(),
+    };
+    var tracking = getTrackingParams();
+    if (tracking) {
+      for (var key in tracking) {
+        if (Object.prototype.hasOwnProperty.call(tracking, key)) {
+          payload[key] = tracking[key];
+        }
+      }
+    }
+    sendEvent(payload, { keepalive: true });
+  }
+
+  function handleGoalClick(event) {
+    var target = event && (event.target || event.srcElement);
+    if (!target) {
+      return;
+    }
+    if (target.nodeType === 3) {
+      target = target.parentNode;
+    }
+    var goalElement = findGoalElement(target);
+    if (!goalElement) {
+      return;
+    }
+    var rawName = goalElement.getAttribute("data-fast-goal") || "";
+    var name = normalizeGoalName(rawName);
+    if (!isValidGoalName(name)) {
+      warn(
+        'Invalid goal name "' +
+          rawName +
+          '". Goal names must be lowercase letters, numbers, underscores, or hyphens and at most 64 characters.'
+      );
+      return;
+    }
+    sendGoal(name);
+  }
+
   function sendPageview(referrerOverride) {
     var payload = {
       type: "pageview",
@@ -530,5 +607,9 @@
 
   if (typeof window !== "undefined" && window.addEventListener) {
     window.addEventListener("popstate", handleRouteChange);
+  }
+
+  if (typeof document !== "undefined" && document.addEventListener) {
+    document.addEventListener("click", handleGoalClick, true);
   }
 })();
