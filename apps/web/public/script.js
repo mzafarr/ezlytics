@@ -493,6 +493,76 @@
     return /^[a-z0-9_-]+$/.test(value);
   }
 
+  function normalizeMetadataKey(value) {
+    if (!value) {
+      return "";
+    }
+    var trimmed = value.trim().toLowerCase();
+    if (!trimmed) {
+      return "";
+    }
+    var normalized = trimmed.replace(/-/g, "_");
+    if (normalized.length > 64) {
+      return "";
+    }
+    return normalized;
+  }
+
+  function sanitizeMetadataValue(value) {
+    if (value === null || value === undefined) {
+      return "";
+    }
+    var stringValue = String(value);
+    if (!stringValue) {
+      return "";
+    }
+    var cleaned = stringValue.replace(/<[^>]*>/g, "");
+    cleaned = cleaned.replace(/\s+/g, " ").trim();
+    if (!cleaned) {
+      return "";
+    }
+    if (cleaned.length > 255) {
+      return cleaned.slice(0, 255);
+    }
+    return cleaned;
+  }
+
+  function getGoalMetadata(element) {
+    if (!element || !element.attributes) {
+      return null;
+    }
+    var metadata = {};
+    var count = 0;
+    for (var i = 0; i < element.attributes.length; i += 1) {
+      var attribute = element.attributes[i];
+      if (!attribute || !attribute.name) {
+        continue;
+      }
+      var attributeName = attribute.name;
+      if (attributeName.indexOf("data-fast-goal-") !== 0) {
+        continue;
+      }
+      var rawKey = attributeName.slice("data-fast-goal-".length);
+      var key = normalizeMetadataKey(rawKey);
+      if (!key) {
+        continue;
+      }
+      if (Object.prototype.hasOwnProperty.call(metadata, key)) {
+        continue;
+      }
+      var value = sanitizeMetadataValue(attribute.value);
+      if (!value) {
+        continue;
+      }
+      metadata[key] = value;
+      count += 1;
+      if (count >= 10) {
+        break;
+      }
+    }
+    return count > 0 ? metadata : null;
+  }
+
   function findGoalElement(target) {
     var node = target;
     while (node && node !== document.documentElement) {
@@ -504,7 +574,7 @@
     return null;
   }
 
-  function sendGoal(name) {
+  function sendGoal(name, metadata) {
     var payload = {
       type: "goal",
       name: name,
@@ -516,6 +586,9 @@
       visitorId: getVisitorId(),
       sessionId: getSessionId(),
     };
+    if (metadata) {
+      payload.metadata = metadata;
+    }
     var tracking = getTrackingParams();
     if (tracking) {
       for (var key in tracking) {
@@ -549,7 +622,8 @@
       );
       return;
     }
-    sendGoal(name);
+    var metadata = getGoalMetadata(goalElement);
+    sendGoal(name, metadata);
   }
 
   function sendPageview(referrerOverride) {
