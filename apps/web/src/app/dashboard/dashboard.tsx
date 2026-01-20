@@ -14,10 +14,12 @@ type RollupTotals = Record<string, number>;
 const formatVisitors = (count: number) =>
   `${count.toLocaleString()} visitor${count === 1 ? "" : "s"}`;
 
-export default function Dashboard() {
+export default function Dashboard({ siteId }: { siteId?: string }) {
   const sitesQuery = useQuery(trpc.sites.list.queryOptions());
   const sites = sitesQuery.data ?? [];
   const siteIds = useMemo(() => sites.map((site) => site.id), [sites]);
+
+  const activeSite = siteId ? sites.find((site) => site.id === siteId) : null;
 
   const rollupQueries = useQuery({
     queryKey: ["dashboard-rollups", siteIds],
@@ -48,6 +50,29 @@ export default function Dashboard() {
   });
 
   const isLoading = sitesQuery.isLoading || rollupQueries.isLoading;
+
+  if (siteId) {
+    return (
+      <div className="flex flex-col gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>{activeSite?.name ?? "Site overview"}</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-sm text-muted-foreground">
+            <p>Analytics content for this site is coming soon.</p>
+            {activeSite ? (
+              <div>
+                <div>Domain: {activeSite.domain}</div>
+                <div>Site ID: {activeSite.id}</div>
+              </div>
+            ) : (
+              <p>Loading site details...</p>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 py-10">

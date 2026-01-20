@@ -2,7 +2,13 @@ import { auth } from "@my-better-t-app/auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-export default async function SettingsPage() {
+import Dashboard from "../dashboard";
+
+type PageProps = {
+  params: { siteId: string };
+};
+
+export default async function SiteDashboardPage({ params }: PageProps) {
   const session = await auth.api.getSession({
     headers: await headers(),
   });
@@ -11,5 +17,5 @@ export default async function SettingsPage() {
     redirect("/login");
   }
 
-  redirect("/dashboard");
+  return <Dashboard siteId={params.siteId} />;
 }

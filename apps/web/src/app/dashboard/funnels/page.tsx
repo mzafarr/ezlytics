@@ -2,8 +2,6 @@ import { auth } from "@my-better-t-app/auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import Dashboard from "../dashboard";
-
 export default async function FunnelsPage() {
   const session = await auth.api.getSession({
     headers: await headers(),
@@ -13,5 +11,5 @@ export default async function FunnelsPage() {
     redirect("/login");
   }
 
-  return <Dashboard />;
+  redirect("/dashboard");
 }
