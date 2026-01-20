@@ -1,0 +1,202 @@
+tasks:
+  # From prd.json
+  - title: "US-001: Create multi-site dashboard home with site list"
+    completed: true
+    parallel_group: 1
+    description: "As a user, I want `/dashboard` to show a list of my sites so I can choose which project to view."
+    acceptance_criteria:
+      - "/dashboard renders a list of site cards (name + visitors count)"
+      - "A '+ Website' button navigates to /dashboard/new"
+      - "If no sites exist, show an empty state with CTA to create a site"
+      - "Typecheck passes"
+      - "Verify in browser using dev-browser skill"
+
+  - title: "US-002: Implement site-scoped routes (/dashboard/[siteId])"
+    completed: true
+    parallel_group: 1
+    description: "As a user, I want analytics pages scoped per site so switching sites updates the URL and data."
+    acceptance_criteria:
+      - "Overview route: /dashboard/[siteId]"
+      - "Funnels route: /dashboard/[siteId]/funnels"
+      - "Settings route: /dashboard/[siteId]/settings"
+      - "Navigation links include the active siteId"
+      - "Typecheck passes"
+      - "Verify in browser using dev-browser skill"
+
+  - title: "US-003: Add site switcher to header"
+    completed: true
+    parallel_group: 1
+    description: "As a user, I want a site switcher so I can move between projects quickly."
+    acceptance_criteria:
+      - "Header shows current site name"
+      - "Dropdown lists all sites"
+      - "Selecting a site navigates to that site's overview route"
+      - "Typecheck passes"
+      - "Verify in browser using dev-browser skill"
+
+  - title: "US-004: Implement onboarding gate/redirect logic"
+    completed: true
+    parallel_group: 1
+    description: "As a new user, I should be guided to onboarding if I have no sites."
+    acceptance_criteria:
+      - "If user has 0 sites, any visit to /dashboard redirects to /dashboard/new"
+      - "If user has >=1 site, /dashboard shows site list"
+      - "Typecheck passes"
+
+  - title: "US-005: Onboarding Step 1: Add site form"
+    completed: true
+    parallel_group: 2
+    description: "As a user, I want to create my first site with a domain and timezone."
+    acceptance_criteria:
+      - "Form collects domain and timezone"
+      - "Successful submit creates site and advances to step 2"
+      - "Errors are shown inline for invalid domain/timezone"
+      - "Typecheck passes"
+      - "Verify in browser using dev-browser skill"
+
+  - title: "US-006: Onboarding Step 2: Install script snippet"
+    completed: true
+    parallel_group: 2
+    description: "As a user, I want a copyable script snippet so I can install tracking."
+    acceptance_criteria:
+      - "Snippet shows correct data-website-id and data-domain"
+      - "'Copy snippet' button copies to clipboard with success feedback"
+      - "'I've installed the script' advances to step 3"
+      - "Typecheck passes"
+      - "Verify in browser using dev-browser skill"
+
+  - title: "US-007: Onboarding Step 3: Revenue attribution (optional)"
+    completed: true
+    parallel_group: 3
+    description: "As a user, I want to optionally connect Stripe or LemonSqueezy to attribute revenue."
+    acceptance_criteria:
+      - "Provider dropdown: Stripe or LemonSqueezy"
+      - "API key input is masked by default"
+      - "'Connect' saves provider + key and completes onboarding"
+      - "'Skip for now' completes onboarding without saving keys"
+      - "Typecheck passes"
+      - "Verify in browser using dev-browser skill"
+
+  - title: "US-008: Secure storage for revenue keys"
+    completed: true
+    parallel_group: 3
+    description: "As an operator, I want revenue provider keys stored securely so secrets are protected."
+    acceptance_criteria:
+      - "Keys are encrypted at rest before DB write"
+      - "Keys are never returned in API responses"
+      - "Update endpoint supports key rotation"
+      - "Typecheck passes"
+
+  - title: "US-009: Redirect sign-up flow to onboarding"
+    completed: true
+    parallel_group: 1
+    description: "As a new user, I should land in onboarding right after sign-up."
+    acceptance_criteria:
+      - "Sign-up success redirects to /dashboard/new"
+      - "Existing users logging in go to /dashboard"
+      - "Typecheck passes"
+      - "Verify in browser using dev-browser skill"
+
+  - title: "US-010: Empty state for 'no events yet'"
+    completed: true
+    parallel_group: 4
+    description: "As a user with no traffic, I want a clear empty state instead of fake analytics."
+    acceptance_criteria:
+      - "If a site has 0 events, show an empty state panel with 'Awaiting first event...' checklist"
+      - "Empty state includes steps: install script, visit site, refresh dashboard, contact support"
+      - "Analytics sections show 'No data yet' placeholders"
+      - "Typecheck passes"
+      - "Verify in browser using dev-browser skill"
+
+  # From prd-2.json
+  - title: "US-011: Include geo dimensions in rollups"
+    completed: true
+    parallel_group: 5
+    description: "As a developer, I want rollups to include region and city so dashboards are fast."
+    acceptance_criteria:
+      - "Daily rollups include region and city dimensions"
+      - "Hourly rollups include region and city dimensions"
+      - "Rollup job populates region/city aggregates"
+      - "Typecheck passes"
+
+  - title: "US-012: Replace geo placeholders with map and region/city tabs"
+    completed: true
+    parallel_group: 5
+    description: "As a user, I want geo map and region/city breakdowns to replace placeholders."
+    acceptance_criteria:
+      - "Map renders geo distribution when data exists"
+      - "Region and City tabs show ranked lists"
+      - "Coming soon placeholders removed when data exists"
+      - "Verify in browser using dev-browser skill"
+      - "Typecheck passes"
+
+  - title: "US-013: Add revenue event types to payments schema"
+    completed: true
+    parallel_group: 6
+    description: "As a developer, I need to store revenue event types so rollups can split new, renewal, and refund."
+    acceptance_criteria:
+      - "Payments table includes `event_type` enum: new | renewal | refund"
+      - "Rollup schema includes revenue_by_type totals"
+      - "Migration applied successfully"
+      - "Typecheck passes"
+
+  - title: "US-014: Set revenue event_type in webhooks (Stripe/LemonSqueezy)"
+    completed: true
+    parallel_group: 6
+    description: "As a developer, I want Stripe and LemonSqueezy webhooks to set event_type correctly."
+    acceptance_criteria:
+      - "Stripe webhook parser sets event_type for new, renewal, refund"
+      - "LemonSqueezy webhook parser sets event_type for new, renewal, refund"
+      - "Persisted payment rows include event_type"
+      - "Typecheck passes"
+
+  - title: "US-015: Aggregate revenue by event type in rollups"
+    completed: true
+    parallel_group: 7
+    description: "As a developer, I want rollups to include revenue_by_type totals."
+    acceptance_criteria:
+      - "Rollup job sums revenue by event_type into revenue_by_type fields"
+      - "Totals include new, renewal, and refund"
+      - "Typecheck passes"
+
+  - title: "US-016: Show revenue split by new/renewal/refund"
+    completed: true
+    parallel_group: 7
+    description: "As a user, I want revenue charts and breakdowns to show refunds and new revenue separately."
+    acceptance_criteria:
+      - "Revenue chart shows new vs renewal vs refund (stacked or separate)"
+      - "Refund totals appear in the revenue summary"
+      - "Coming soon placeholder removed when data exists"
+      - "Verify in browser using dev-browser skill"
+      - "Typecheck passes"
+
+  - title: "US-017: Store event metadata for journeys"
+    completed: false
+    parallel_group: 8
+    description: "As a user, I want event parameters stored so journey details can show metadata."
+    acceptance_criteria:
+      - "Events table includes `metadata` JSON column"
+      - "Ingestion accepts `metadata` JSON for goal/identify events"
+      - "Metadata is sanitized to strip HTML and scripts"
+      - "Sensitive metadata values are encrypted at rest"
+      - "Typecheck passes"
+
+  - title: "US-018: Display metadata in journey timeline"
+    completed: false
+    parallel_group: 8
+    description: "As a user, I want to see event parameters in visitor journeys."
+    acceptance_criteria:
+      - "Visitor timeline displays metadata in expandable rows"
+      - "Metadata rendering is readable and labeled"
+      - "Verify in browser using dev-browser skill"
+      - "Typecheck passes"
+
+  - title: "US-019: Order journey timeline by timestamps"
+    completed: false
+    parallel_group: 8
+    description: "As a user, I want journeys ordered by real timestamps."
+    acceptance_criteria:
+      - "Visitor timeline ordered by `timestamp`"
+      - "Timeline groups events by day with human-readable times"
+      - "Verify in browser using dev-browser skill"
+      - "Typecheck passes"

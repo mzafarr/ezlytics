@@ -4,6 +4,16 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { type Route } from "next";
 import { useQuery } from "@tanstack/react-query";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Legend,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { queryClient, trpc } from "@/utils/trpc";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -30,6 +40,16 @@ const formatGeoLabel = (value: string) =>
 
 const formatVisitors = (count: number) =>
   `${count.toLocaleString()} visitor${count === 1 ? "" : "s"}`;
+
+const formatCurrency = (value: number) => `$${value.toLocaleString()}`;
+
+const formatRefund = (value: number) =>
+  value > 0 ? `-$${value.toLocaleString()}` : "$0";
+
+const toNumber = (value: unknown) => {
+  const numeric = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(numeric) ? numeric : 0;
+};
 
 export default function Dashboard({ siteId }: { siteId?: string }) {
   const sitesQuery = useQuery(trpc.sites.list.queryOptions());
@@ -117,6 +137,54 @@ export default function Dashboard({ siteId }: { siteId?: string }) {
         .slice(0, 6),
     [geoCounts.city],
   );
+
+  const revenueTotals = useMemo(() => {
+    const totals = { total: 0, new: 0, renewal: 0, refund: 0 };
+    for (const entry of activeRollupQuery.data?.daily ?? []) {
+      totals.total += toNumber(entry.revenue);
+      const byType = entry.revenueByType as
+        | { new?: number; renewal?: number; refund?: number }
+        | null
+        | undefined;
+      totals.new += toNumber(byType?.new);
+      totals.renewal += toNumber(byType?.renewal);
+      totals.refund += toNumber(byType?.refund);
+    }
+    return totals;
+  }, [activeRollupQuery.data?.daily]);
+
+  const revenueSeries = useMemo(() => {
+    return (activeRollupQuery.data?.daily ?? [])
+      .map((entry) => {
+        const rawDate = String(entry.date);
+        const dateValue = new Date(rawDate);
+        const dateLabel = Number.isNaN(dateValue.getTime())
+          ? rawDate
+          : dateValue.toLocaleDateString("en-US", {
+              month: "short",
+              day: "numeric",
+            });
+        const byType = entry.revenueByType as
+          | { new?: number; renewal?: number; refund?: number }
+          | null
+          | undefined;
+        const total = toNumber(entry.revenue);
+        const newValue = toNumber(byType?.new);
+        const renewalValue = toNumber(byType?.renewal);
+        const refundValue = toNumber(byType?.refund);
+        const hasSplit = newValue + renewalValue + refundValue > 0;
+        return {
+          date: rawDate,
+          dateLabel,
+          new: hasSplit ? newValue : total,
+          renewal: hasSplit ? renewalValue : 0,
+          refund: hasSplit ? refundValue : 0,
+        };
+      })
+      .sort((left, right) => left.date.localeCompare(right.date));
+  }, [activeRollupQuery.data?.daily]);
+
+  const hasRevenueData = revenueTotals.total > 0;
 
   const isLoading =
     sitesQuery.isLoading || rollupQueries.isLoading || activeRollupQuery.isLoading;
@@ -230,6 +298,104 @@ export default function Dashboard({ siteId }: { siteId?: string }) {
             )}
           </CardContent>
         </Card>
+
+        <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
+          <Card>
+            <CardHeader>
+              <CardTitle>Revenue split</CardTitle>
+              <CardDescription>New vs renewal vs refunds.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {hasRevenueData ? (
+                <div className="h-64 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={revenueSeries}>
+                      <CartesianGrid
+                        vertical={false}
+                        stroke="hsl(var(--border))"
+                        strokeDasharray="3 3"
+                        opacity={0.5}
+                      />
+                      <XAxis
+                        dataKey="dateLabel"
+                        stroke="hsl(var(--muted-foreground))"
+                        fontSize={12}
+                        tickLine={false}
+                        axisLine={false}
+                      />
+                      <YAxis
+                        stroke="hsl(var(--muted-foreground))"
+                        fontSize={12}
+                        tickLine={false}
+                        axisLine={false}
+                        tickFormatter={(value) => `$${value}`}
+                      />
+                      <Tooltip
+                        formatter={(value) => formatCurrency(Number(value))}
+                      />
+                      <Legend />
+                      <Bar
+                        dataKey="new"
+                        stackId="revenue"
+                        fill="#f97316"
+                        name="New"
+                        radius={[4, 4, 0, 0]}
+                      />
+                      <Bar
+                        dataKey="renewal"
+                        stackId="revenue"
+                        fill="#3b82f6"
+                        name="Renewal"
+                      />
+                      <Bar
+                        dataKey="refund"
+                        stackId="revenue"
+                        fill="#ef4444"
+                        name="Refunds"
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  No revenue data yet.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Revenue summary</CardTitle>
+              <CardDescription>Totals for the selected range.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Total</span>
+                <span className="font-medium">
+                  {formatCurrency(revenueTotals.total)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">New</span>
+                <span className="font-medium">
+                  {formatCurrency(revenueTotals.new)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Renewal</span>
+                <span className="font-medium">
+                  {formatCurrency(revenueTotals.renewal)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-muted-foreground">Refunds</span>
+                <span className="font-medium text-rose-500">
+                  {formatRefund(revenueTotals.refund)}
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
         <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
           <Card>
