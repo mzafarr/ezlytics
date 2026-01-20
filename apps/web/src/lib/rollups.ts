@@ -16,6 +16,8 @@ export type RollupDimension =
   | "utm_source"
   | "utm_campaign"
   | "country"
+  | "region"
+  | "city"
   | "device"
   | "browser"
   | "goal";
@@ -207,6 +209,8 @@ export const extractDimensionRollups = ({
   const deviceValue = typeof normalizedRecord.device === "string" ? normalizedRecord.device : "";
   const browserValue = typeof normalizedRecord.browser === "string" ? normalizedRecord.browser : "";
   const countryValue = typeof normalizedRecord.country === "string" ? normalizedRecord.country : "";
+  const regionValue = typeof normalizedRecord.region === "string" ? normalizedRecord.region : "";
+  const cityValue = typeof normalizedRecord.city === "string" ? normalizedRecord.city : "";
   const utmRecord =
     normalizedRecord.utm && typeof normalizedRecord.utm === "object" ? (normalizedRecord.utm as Record<string, unknown>) : {};
 
@@ -233,6 +237,14 @@ export const extractDimensionRollups = ({
     entries.push({
       dimension: "country",
       value: ensureDimensionValue(countryValue, "unknown", false),
+    });
+    entries.push({
+      dimension: "region",
+      value: ensureDimensionValue(regionValue, "unknown", false),
+    });
+    entries.push({
+      dimension: "city",
+      value: ensureDimensionValue(cityValue, "unknown", false),
     });
     entries.push({
       dimension: "device",

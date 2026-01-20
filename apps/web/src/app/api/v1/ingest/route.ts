@@ -321,6 +321,17 @@ const normalizeCountry = (value: string | null) => {
   return trimmed.length > 2 ? trimmed.slice(0, 2) : trimmed;
 };
 
+const normalizeGeoValue = (value: string | null, fallback: string) => {
+  if (!value) {
+    return fallback;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return fallback;
+  }
+  return trimmed.length > MAX_STRING_LENGTH ? trimmed.slice(0, MAX_STRING_LENGTH) : trimmed;
+};
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
 
@@ -458,6 +469,8 @@ export const POST = async (request: NextRequest) => {
 
   const { device, browser, os } = parseUserAgent(request.headers.get("user-agent"));
   const country = normalizeCountry(request.headers.get("x-vercel-ip-country"));
+  const region = normalizeGeoValue(request.headers.get("x-vercel-ip-country-region"), "unknown");
+  const city = normalizeGeoValue(request.headers.get("x-vercel-ip-city"), "unknown");
 
   const normalized = {
     url: normalizeUrl(payload.path),
@@ -469,6 +482,8 @@ export const POST = async (request: NextRequest) => {
     browser,
     os,
     country,
+    region,
+    city,
   };
 
   const createdAt = payload.timestamp ?? new Date();
