@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { type Route } from "next";
 import { useQuery } from "@tanstack/react-query";
@@ -10,6 +10,23 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 type RollupTotals = Record<string, number>;
+
+const geoPinPositions: Record<string, { x: number; y: number }> = {
+  US: { x: 160, y: 170 },
+  CA: { x: 150, y: 120 },
+  GB: { x: 365, y: 145 },
+  DE: { x: 395, y: 165 },
+  FR: { x: 380, y: 185 },
+  BR: { x: 235, y: 285 },
+  IN: { x: 560, y: 220 },
+  JP: { x: 665, y: 165 },
+  AU: { x: 640, y: 320 },
+};
+
+const formatGeoLabel = (value: string) =>
+  value.trim().length === 0 || value === "unknown"
+    ? "Unknown"
+    : value;
 
 const formatVisitors = (count: number) =>
   `${count.toLocaleString()} visitor${count === 1 ? "" : "s"}`;
@@ -47,7 +64,62 @@ export default function Dashboard({ siteId }: { siteId?: string }) {
     enabled: siteIds.length > 0,
   });
 
-  const isLoading = sitesQuery.isLoading || rollupQueries.isLoading;
+  const activeRollupQuery = useQuery({
+    ...trpc.analytics.rollups.queryOptions({ siteId: siteId ?? "" }),
+    enabled: Boolean(siteId),
+  });
+
+  const [activeGeoTab, setActiveGeoTab] = useState<"region" | "city">("region");
+
+  const geoCounts = useMemo(() => {
+    const base = {
+      country: {} as Record<string, number>,
+      region: {} as Record<string, number>,
+      city: {} as Record<string, number>,
+    };
+    const dimensions = activeRollupQuery.data?.dimensions ?? [];
+    for (const entry of dimensions) {
+      const dimension = entry.dimension;
+      if (dimension !== "country" && dimension !== "region" && dimension !== "city") {
+        continue;
+      }
+      const label = entry.dimensionValue.trim() || "unknown";
+      const count = entry.pageviews ?? 0;
+      if (dimension === "country") {
+        base.country[label] = (base.country[label] ?? 0) + count;
+      } else if (dimension === "region") {
+        base.region[label] = (base.region[label] ?? 0) + count;
+      } else {
+        base.city[label] = (base.city[label] ?? 0) + count;
+      }
+    }
+    return base;
+  }, [activeRollupQuery.data?.dimensions]);
+
+  const topCountries = useMemo(
+    () =>
+      Object.entries(geoCounts.country)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5),
+    [geoCounts.country],
+  );
+  const topRegions = useMemo(
+    () =>
+      Object.entries(geoCounts.region)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 6),
+    [geoCounts.region],
+  );
+  const topCities = useMemo(
+    () =>
+      Object.entries(geoCounts.city)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 6),
+    [geoCounts.city],
+  );
+
+  const isLoading =
+    sitesQuery.isLoading || rollupQueries.isLoading || activeRollupQuery.isLoading;
   const activeSite = siteId ? sites.find((site) => site.id === siteId) : null;
   const activeSiteTotals = siteId ? rollupQueries.data?.[siteId] : null;
   const hasEvents = (activeSiteTotals?.visitors ?? 0) > 0;
@@ -116,6 +188,31 @@ export default function Dashboard({ siteId }: { siteId?: string }) {
       );
     }
 
+    const activeGeoEntries = activeGeoTab === "region" ? topRegions : topCities;
+    const activeGeoTotal = activeGeoEntries.reduce((sum, [, count]) => sum + count, 0);
+    const maxCountryCount = topCountries.reduce(
+      (max, [, count]) => Math.max(max, count),
+      0,
+    );
+    const geoPins = topCountries
+      .map(([label, count]) => {
+        const key = label.trim().toUpperCase();
+        const coords = geoPinPositions[key];
+        if (!coords) {
+          return null;
+        }
+        const size = maxCountryCount
+          ? Math.round(4 + (count / maxCountryCount) * 6)
+          : 4;
+        return { label, count, size, ...coords };
+      })
+      .filter(
+        (
+          pin,
+        ): pin is { label: string; count: number; size: number; x: number; y: number } =>
+          Boolean(pin),
+      );
+
     return (
       <div className="flex flex-col gap-6">
         <Card>
@@ -123,7 +220,6 @@ export default function Dashboard({ siteId }: { siteId?: string }) {
             <CardTitle>{activeSite?.name ?? "Site overview"}</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm text-muted-foreground">
-            <p>Analytics content for this site is coming soon.</p>
             {activeSite ? (
               <div>
                 <div>Domain: {activeSite.domain}</div>
@@ -134,6 +230,111 @@ export default function Dashboard({ siteId }: { siteId?: string }) {
             )}
           </CardContent>
         </Card>
+
+        <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
+          <Card>
+            <CardHeader>
+              <CardTitle>Geo distribution</CardTitle>
+              <CardDescription>Top countries based on recent traffic.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {topCountries.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  No geo data yet. Collect more visits to see the map.
+                </p>
+              ) : (
+                <>
+                  <div className="relative h-64 w-full overflow-hidden rounded-md border bg-muted/20">
+                    <svg viewBox="0 0 800 420" className="h-full w-full">
+                      <rect x="0" y="0" width="800" height="420" rx="24" fill="hsl(var(--muted))" opacity="0.35" />
+                      <rect x="60" y="90" width="210" height="110" rx="48" fill="hsl(var(--muted))" opacity="0.8" />
+                      <rect x="170" y="220" width="130" height="150" rx="60" fill="hsl(var(--muted))" opacity="0.8" />
+                      <rect x="330" y="110" width="130" height="150" rx="45" fill="hsl(var(--muted))" opacity="0.8" />
+                      <rect x="370" y="250" width="140" height="130" rx="55" fill="hsl(var(--muted))" opacity="0.8" />
+                      <rect x="500" y="95" width="230" height="170" rx="60" fill="hsl(var(--muted))" opacity="0.8" />
+                      <rect x="570" y="285" width="170" height="90" rx="50" fill="hsl(var(--muted))" opacity="0.8" />
+                      {geoPins.map((pin) => (
+                        <g key={pin.label}>
+                          <circle cx={pin.x} cy={pin.y} r={pin.size + 2} fill="hsl(var(--primary))" opacity="0.25" />
+                          <circle cx={pin.x} cy={pin.y} r={pin.size} fill="hsl(var(--primary))" />
+                          <title>
+                            {`${formatGeoLabel(pin.label)} · ${pin.count.toLocaleString()} visitors`}
+                          </title>
+                        </g>
+                      ))}
+                    </svg>
+                  </div>
+                  <div className="space-y-2 text-sm">
+                    {topCountries.map(([label, count]) => (
+                      <div key={label} className="flex items-center justify-between">
+                        <span className="text-muted-foreground">
+                          {formatGeoLabel(label)}
+                        </span>
+                        <span className="font-medium">{count.toLocaleString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-2">
+              <div>
+                <CardTitle>Regions & cities</CardTitle>
+                <CardDescription>Ranked by pageviews.</CardDescription>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant={activeGeoTab === "region" ? "default" : "outline"}
+                  onClick={() => setActiveGeoTab("region")}
+                >
+                  Regions
+                </Button>
+                <Button
+                  size="sm"
+                  variant={activeGeoTab === "city" ? "default" : "outline"}
+                  onClick={() => setActiveGeoTab("city")}
+                >
+                  Cities
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-1">
+              {activeGeoEntries.length === 0 ? (
+                <div className="text-center py-8 text-sm text-muted-foreground">
+                  No data available
+                </div>
+              ) : (
+                activeGeoEntries.map(([label, count]) => {
+                  const percentage =
+                    activeGeoTotal === 0 ? 0 : (count / activeGeoTotal) * 100;
+                  return (
+                    <div
+                      key={label}
+                      className="relative group min-h-[32px] flex items-center"
+                    >
+                      <div
+                        className="absolute left-0 top-0 bottom-0 bg-primary/10 rounded-r-md transition-all duration-500"
+                        style={{ width: `${percentage}%` }}
+                      />
+                      <div className="relative z-10 flex items-center justify-between w-full px-2 py-1.5">
+                        <span className="text-sm text-foreground truncate font-medium">
+                          {formatGeoLabel(label)}
+                        </span>
+                        <span className="text-sm text-muted-foreground font-mono">
+                          {count.toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="absolute inset-0 hover:bg-muted/40 transition-colors rounded-sm pointer-events-none" />
+                    </div>
+                  );
+                })
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
     );
   }
