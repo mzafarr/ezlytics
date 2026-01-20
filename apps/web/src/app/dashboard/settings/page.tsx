@@ -2,9 +2,9 @@ import { auth } from "@my-better-t-app/auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-import Dashboard from "./dashboard";
+import Dashboard from "../dashboard";
 
-export default async function DashboardPage() {
+export default async function SettingsPage() {
   const session = await auth.api.getSession({
     headers: await headers(),
   });
