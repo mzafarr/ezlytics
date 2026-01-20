@@ -5,7 +5,7 @@ import Link from "next/link";
 import { type Route } from "next";
 import { useQuery } from "@tanstack/react-query";
 import { queryClient, trpc } from "@/utils/trpc";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -18,8 +18,6 @@ export default function Dashboard({ siteId }: { siteId?: string }) {
   const sitesQuery = useQuery(trpc.sites.list.queryOptions());
   const sites = sitesQuery.data ?? [];
   const siteIds = useMemo(() => sites.map((site) => site.id), [sites]);
-
-  const activeSite = siteId ? sites.find((site) => site.id === siteId) : null;
 
   const rollupQueries = useQuery({
     queryKey: ["dashboard-rollups", siteIds],
@@ -50,8 +48,74 @@ export default function Dashboard({ siteId }: { siteId?: string }) {
   });
 
   const isLoading = sitesQuery.isLoading || rollupQueries.isLoading;
+  const activeSite = siteId ? sites.find((site) => site.id === siteId) : null;
+  const activeSiteTotals = siteId ? rollupQueries.data?.[siteId] : null;
+  const hasEvents = (activeSiteTotals?.visitors ?? 0) > 0;
+  const showEmptyState = Boolean(siteId && activeSite && !isLoading && !hasEvents);
 
   if (siteId) {
+    if (isLoading || !activeSite) {
+      return (
+        <div className="flex flex-col gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Loading analytics...</CardTitle>
+            </CardHeader>
+            <CardContent className="text-sm text-muted-foreground">
+              Fetching site details and rollups.
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
+
+    if (showEmptyState) {
+      return (
+        <div className="flex flex-col gap-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Awaiting first event...</CardTitle>
+              <CardDescription>
+                {activeSite.name} · {activeSite.domain}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4 text-sm text-muted-foreground">
+              <ol className="list-decimal space-y-1 pl-4">
+                <li>Install the tracking script from Settings.</li>
+                <li>Visit your site to trigger a pageview.</li>
+                <li>Refresh this dashboard after a minute.</li>
+                <li>Contact support if events still do not appear.</li>
+              </ol>
+              <Link
+                href={`/dashboard/${siteId}/settings` as Route}
+                className={cn(buttonVariants({ size: "sm" }))}
+              >
+                Install script
+              </Link>
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            {[
+              "Visitors",
+              "Revenue",
+              "Top pages",
+              "Goal conversions",
+            ].map((title) => (
+              <Card key={title}>
+                <CardHeader>
+                  <CardTitle>{title}</CardTitle>
+                </CardHeader>
+                <CardContent className="text-sm text-muted-foreground">
+                  No data yet
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="flex flex-col gap-6">
         <Card>
