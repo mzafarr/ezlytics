@@ -31,7 +31,7 @@ export default function SignUpForm({ onSwitchToSignIn }: { onSwitchToSignIn: () 
         },
         {
           onSuccess: () => {
-            router.push("/dashboard");
+            router.push("/dashboard/new");
             toast.success("Sign up successful");
           },
           onError: (error) => {
@@ -54,7 +54,7 @@ export default function SignUpForm({ onSwitchToSignIn }: { onSwitchToSignIn: () 
     try {
       await authClient.signIn.social({
         provider: "google",
-        callbackURL: "/dashboard",
+        callbackURL: "/dashboard/new",
       });
     } catch {
       toast.error("Failed to sign in with Google");
