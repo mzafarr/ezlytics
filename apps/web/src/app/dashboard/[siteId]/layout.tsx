@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { buttonVariants } from "@/components/ui/button";
+import SiteSwitcher from "@/components/dashboard/site-switcher";
 import { cn } from "@/lib/utils";
 
 type LayoutProps = {
@@ -30,12 +31,15 @@ export default async function SiteDashboardLayout({ children, params }: LayoutPr
           <h1 className="text-2xl font-semibold tracking-tight">Site dashboard</h1>
           <p className="text-sm text-muted-foreground">Site ID: {siteId}</p>
         </div>
-        <Link
-          href={"/dashboard" as Route}
-          className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
-        >
-          All sites
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <SiteSwitcher siteId={siteId} />
+          <Link
+            href={"/dashboard" as Route}
+            className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+          >
+            All sites
+          </Link>
+        </div>
       </div>
       <div className="mb-6 flex flex-wrap gap-2">
         <Link

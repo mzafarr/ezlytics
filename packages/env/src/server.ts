@@ -21,6 +21,7 @@ export const env = createEnv({
     RATE_LIMIT_MAX_REQUESTS_PER_SITE: z.coerce.number().int().min(1).optional(),
     STRIPE_WEBHOOK_SECRET: z.string().min(1).optional(),
     LEMONSQUEEZY_WEBHOOK_SECRET: z.string().min(1).optional(),
+    REVENUE_PROVIDER_KEY_SECRET: z.string().min(32),
   },
   runtimeEnv: process.env,
   emptyStringAsUndefined: true,

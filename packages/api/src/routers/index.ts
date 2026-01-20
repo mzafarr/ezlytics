@@ -6,6 +6,7 @@ import { and, db, eq, gte, lte, site } from "@my-better-t-app/db";
 import { TRPCError } from "@trpc/server";
 
 import { protectedProcedure, publicProcedure, router } from "../index";
+import { encryptRevenueKey } from "../revenue-keys";
 
 const normalizeDomain = (input: string) => {
   const trimmed = input.trim().toLowerCase();
@@ -28,7 +29,28 @@ const siteInputSchema = z.object({
       (value) => /^[a-z0-9.-]+$/.test(value),
       "Root domain should only include letters, numbers, dots, or hyphens",
     ),
+  timezone: z
+    .string()
+    .transform((value) => value.trim())
+    .refine((value) => value.length > 0, "Timezone is required")
+    .refine((value) => value.length <= 64, "Timezone must be 64 characters or less"),
 });
+
+const revenueSettingsSchema = z
+  .object({
+    siteId: z.string().min(1, "Site id is required"),
+    provider: z.enum(["none", "stripe", "lemonsqueezy"]),
+    webhookSecret: z.string().trim(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.provider !== "none" && value.webhookSecret.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Webhook secret is required",
+        path: ["webhookSecret"],
+      });
+    }
+  });
 
 export const appRouter = router({
   healthCheck: publicProcedure.query(() => {
@@ -49,6 +71,8 @@ export const appRouter = router({
           domain: true,
           websiteId: true,
           apiKey: true,
+          revenueProvider: true,
+          revenueProviderKeyUpdatedAt: true,
           createdAt: true,
         },
         where: (sites, { eq }) => eq(sites.userId, ctx.session.user.id),
@@ -65,6 +89,7 @@ export const appRouter = router({
         userId: ctx.session.user.id,
         name: input.name,
         domain: input.domain,
+        timezone: input.timezone,
         websiteId,
         apiKey,
       });
@@ -73,6 +98,7 @@ export const appRouter = router({
         id,
         name: input.name,
         domain: input.domain,
+        timezone: input.timezone,
         websiteId,
         apiKey,
       };
@@ -91,6 +117,38 @@ export const appRouter = router({
           .set({ apiKey })
           .where(and(eq(site.id, input.siteId), eq(site.userId, ctx.session.user.id)))
           .returning({ id: site.id, apiKey: site.apiKey });
+
+        if (!updated.length) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Site not found",
+          });
+        }
+
+        return updated[0];
+      }),
+    updateRevenueProvider: protectedProcedure
+      .input(revenueSettingsSchema)
+      .mutation(async ({ input, ctx }) => {
+        const encryptedSecret =
+          input.provider === "none" || input.webhookSecret.length === 0
+            ? null
+            : encryptRevenueKey(input.webhookSecret);
+
+        const updated = await db
+          .update(site)
+          .set({
+            revenueProvider: input.provider,
+            revenueProviderKeyEncrypted: encryptedSecret,
+            revenueProviderKeyUpdatedAt:
+              input.provider === "none" || !encryptedSecret ? null : new Date(),
+          })
+          .where(and(eq(site.id, input.siteId), eq(site.userId, ctx.session.user.id)))
+          .returning({
+            id: site.id,
+            revenueProvider: site.revenueProvider,
+            revenueProviderKeyUpdatedAt: site.revenueProviderKeyUpdatedAt,
+          });
 
         if (!updated.length) {
           throw new TRPCError({

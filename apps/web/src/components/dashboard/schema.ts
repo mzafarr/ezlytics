@@ -2,7 +2,6 @@ import z from "zod";
 
 export const storageKeyFunnels = "datafast.funnels";
 export const storageKeyExclusions = "datafast.exclusions";
-export const storageKeyRevenueProvider = "datafast.revenueProvider";
 export const storageKeyPrimaryGoal = "datafast.primaryGoal";
 export const storageKeyDemoVisitorId = "datafast.demoVisitorId";
 export const storageKeySavedViews = "datafast.savedViews";

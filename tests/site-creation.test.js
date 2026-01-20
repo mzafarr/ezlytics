@@ -10,19 +10,19 @@ const repoRoot = path.resolve(__dirname, "..");
 const read = (relativePath) =>
   readFileSync(path.join(repoRoot, relativePath), "utf8");
 
-test("site creation UI collects name and root domain", () => {
-  const content = read("apps/web/src/app/dashboard/dashboard.tsx");
-  assert.ok(content.includes("Site name"));
-  assert.ok(content.includes("Root domain"));
+test("site creation onboarding collects domain and timezone", () => {
+  const content = read("apps/web/src/app/dashboard/new/step-one.tsx");
+  assert.ok(content.includes("Domain"));
+  assert.ok(content.includes("Timezone"));
 });
 
 test("install snippet includes required data attributes and copy control", () => {
-  const content = read("apps/web/src/app/dashboard/dashboard.tsx");
+  const content = read("apps/web/src/components/dashboard/views/SettingsView.tsx");
   assert.ok(content.includes("data-website-id"));
   assert.ok(content.includes("data-domain"));
   assert.ok(content.includes("data-api-key"));
   assert.ok(content.includes("/js/script.js"));
-  assert.ok(content.includes("Copy snippet"));
+  assert.ok(content.includes("Copy"));
 });
 
 test("site API creates a public website id", () => {

@@ -17,15 +17,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { queryClient, trpc } from "@/utils/trpc";
-import {
-  revenueProviderSchema,
-  defaultRevenueProvider,
-  type Exclusions,
-} from "../schema";
+import { revenueProviderSchema, defaultRevenueProvider, type Exclusions } from "../schema";
 
-import { useEffect, useRef, useState } from "react";
-
-const storageKeyRevenueProvider = "datafast.revenueProvider";
+import { useEffect, useMemo, useState } from "react";
 
 export function SettingsView({
   latestSite,
@@ -41,35 +35,6 @@ export function SettingsView({
   const [revenueProviderSettings, setRevenueProviderSettings] = useState<
     z.infer<typeof revenueProviderSchema>
   >(defaultRevenueProvider);
-  const revenueStorageErrorRef = useRef(false);
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(storageKeyRevenueProvider);
-      if (stored) {
-        const parsed = revenueProviderSchema.safeParse(JSON.parse(stored));
-        if (parsed.success) {
-          setRevenueProviderSettings(parsed.data);
-        }
-      }
-    } catch {
-      // Ignore
-    }
-  }, []);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        storageKeyRevenueProvider,
-        JSON.stringify(revenueProviderSettings),
-      );
-    } catch {
-      if (!revenueStorageErrorRef.current) {
-        revenueStorageErrorRef.current = true;
-        toast.error("Failed to save revenue settings locally");
-      }
-    }
-  }, [revenueProviderSettings]);
 
   const sitesQueryOptions = trpc.sites.list.queryOptions();
 
@@ -97,10 +62,42 @@ export function SettingsView({
     }),
   );
 
+  const updateRevenueProvider = useMutation(
+    trpc.sites.updateRevenueProvider.mutationOptions({
+      onSuccess: (data) => {
+        queryClient.invalidateQueries({ queryKey: sitesQueryOptions.queryKey });
+        setRevenueProviderSettings((prev) => ({
+          ...prev,
+          provider: data.revenueProvider as z.infer<typeof revenueProviderSchema>["provider"],
+          webhookSecret: "",
+        }));
+        toast.success("Revenue settings updated");
+      },
+      onError: (error) => {
+        toast.error(error.message);
+      },
+    }),
+  );
+ 
+  useEffect(() => {
+    if (!latestSite) {
+      setRevenueProviderSettings(defaultRevenueProvider);
+      return;
+    }
+    setRevenueProviderSettings((prev) => ({
+      ...prev,
+      provider: (latestSite.revenueProvider ?? defaultRevenueProvider.provider) as z.infer<
+        typeof revenueProviderSchema
+      >["provider"],
+      webhookSecret: "",
+    }));
+  }, [latestSite]);
+
   const siteForm = useForm({
     defaultValues: {
       name: "",
       domain: "",
+      timezone: "UTC",
     },
     validators: {
       onSubmit: z.object({
@@ -114,12 +111,18 @@ export function SettingsView({
           .trim()
           .min(1, "Root domain is required")
           .max(255, "Max 255 characters"),
+        timezone: z
+          .string()
+          .trim()
+          .min(1, "Timezone is required")
+          .max(64, "Max 64 characters"),
       }),
     },
     onSubmit: async ({ value }) => {
       await createSite.mutateAsync({
         name: value.name,
         domain: value.domain,
+        timezone: value.timezone,
       });
     },
   });
@@ -138,12 +141,22 @@ export function SettingsView({
   const revenueConnectionReady =
     revenueProviderSettings.provider !== "none" &&
     revenueProviderSettings.webhookSecret.trim().length > 0;
+  const revenueLastUpdatedLabel = useMemo(() => {
+    if (!latestSite?.revenueProviderKeyUpdatedAt) {
+      return "Not connected";
+    }
+    const date = new Date(latestSite.revenueProviderKeyUpdatedAt);
+    if (Number.isNaN(date.getTime())) {
+      return "Connected";
+    }
+    return `Connected ${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+  }, [latestSite?.revenueProviderKeyUpdatedAt]);
   const revenueStatusLabel =
     revenueProviderSettings.provider === "none"
       ? "Not connected"
       : revenueConnectionReady
-        ? `${revenueProviderLabel} connected`
-        : `${revenueProviderLabel} disconnected`;
+        ? `${revenueProviderLabel} ready to connect`
+        : `${revenueProviderLabel} ${revenueLastUpdatedLabel.toLowerCase()}`;
 
   return (
     <div className="space-y-6">
@@ -196,6 +209,27 @@ export function SettingsView({
                       onBlur={field.handleBlur}
                       onChange={(e) => field.handleChange(e.target.value)}
                       placeholder="example.com"
+                    />
+                    {field.state.meta.errors ? (
+                      <p className="text-sm text-destructive">
+                        {field.state.meta.errors.join(", ")}
+                      </p>
+                    ) : null}
+                  </div>
+                )}
+              />
+              <siteForm.Field
+                name="timezone"
+                children={(field) => (
+                  <div className="space-y-2">
+                    <Label htmlFor="site-timezone">Timezone</Label>
+                    <Input
+                      id="site-timezone"
+                      name={field.name}
+                      value={field.state.value}
+                      onBlur={field.handleBlur}
+                      onChange={(e) => field.handleChange(e.target.value)}
+                      placeholder="UTC"
                     />
                     {field.state.meta.errors ? (
                       <p className="text-sm text-destructive">
@@ -326,48 +360,75 @@ export function SettingsView({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label>Provider</Label>
-            <select
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
-              value={revenueProviderSettings.provider}
-              onChange={(e) =>
-                setRevenueProviderSettings((prev) => ({
-                  ...prev,
-                  provider: e.target.value as any,
-                }))
-              }
-            >
-              <option value="none">None</option>
-              <option value="stripe">Stripe</option>
-              <option value="lemonsqueezy">LemonSqueezy</option>
-            </select>
-          </div>
-          {revenueProviderSettings.provider !== "none" && (
             <div className="space-y-2">
-              <Label>Webhook Secret</Label>
-              <Input
-                type="password"
-                value={revenueProviderSettings.webhookSecret}
+              <Label>Provider</Label>
+              <select
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+                value={revenueProviderSettings.provider}
                 onChange={(e) =>
                   setRevenueProviderSettings((prev) => ({
                     ...prev,
-                    webhookSecret: e.target.value,
+                    provider: e.target.value as any,
                   }))
                 }
-              />
-              <div className="flex items-center gap-2 pt-2">
-                <span
-                  className={`inline-block h-2 w-2 rounded-full ${revenueConnectionReady ? "bg-emerald-500" : "bg-red-500"}`}
-                />
-                <span className="text-xs text-muted-foreground">
-                  {revenueStatusLabel}
-                </span>
-              </div>
+              >
+                <option value="none">None</option>
+                <option value="stripe">Stripe</option>
+                <option value="lemonsqueezy">LemonSqueezy</option>
+              </select>
             </div>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+            {revenueProviderSettings.provider !== "none" && (
+              <div className="space-y-2">
+                <Label>Webhook Secret</Label>
+                <Input
+                  type="password"
+                  value={revenueProviderSettings.webhookSecret}
+                  onChange={(e) =>
+                    setRevenueProviderSettings((prev) => ({
+                      ...prev,
+                      webhookSecret: e.target.value,
+                    }))
+                  }
+                />
+                <div className="flex items-center gap-2 pt-2">
+                  <span
+                    className={`inline-block h-2 w-2 rounded-full ${revenueConnectionReady ? "bg-emerald-500" : "bg-red-500"}`}
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    {revenueStatusLabel}
+                  </span>
+                </div>
+              </div>
+            )}
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                onClick={() => {
+                  if (!latestSite?.id) {
+                    toast.error("Select a site to update revenue settings");
+                    return;
+                  }
+                  updateRevenueProvider.mutate({
+                    siteId: latestSite.id,
+                    provider: revenueProviderSettings.provider,
+                    webhookSecret: revenueProviderSettings.webhookSecret,
+                  });
+                }}
+                disabled={
+                  updateRevenueProvider.isPending ||
+                  (revenueProviderSettings.provider !== "none" && !revenueConnectionReady)
+                }
+              >
+                {updateRevenueProvider.isPending ? "Saving..." : "Save settings"}
+              </Button>
+              {latestSite?.revenueProviderKeyUpdatedAt ? (
+                <span className="text-xs text-muted-foreground">
+                  {revenueLastUpdatedLabel}
+                </span>
+              ) : null}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
   );
 }
