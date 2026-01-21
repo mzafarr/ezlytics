@@ -33,6 +33,15 @@ const geoPinPositions: Record<string, { x: number; y: number }> = {
   AU: { x: 640, y: 320 },
 };
 
+const worldMapPaths = [
+  "M80 120Q110 80 170 90Q230 90 260 130Q280 150 260 190Q240 220 190 210Q150 205 120 190Q90 175 70 150Q65 135 80 120Z",
+  "M200 230Q230 220 250 240Q270 260 260 300Q250 340 230 360Q210 370 200 340Q190 310 190 270Q190 245 200 230Z",
+  "M340 120Q360 100 390 110Q420 120 430 140Q435 160 410 170Q380 180 350 170Q330 160 330 140Q330 125 340 120Z",
+  "M360 190Q390 175 420 190Q450 205 450 235Q450 270 430 305Q415 325 390 320Q365 310 360 280Q350 240 360 190Z",
+  "M450 120Q480 90 540 105Q600 95 660 130Q700 150 720 190Q730 230 690 250Q650 265 610 250Q575 235 560 220Q535 205 515 210Q485 215 470 200Q440 180 450 120Z",
+  "M600 285Q620 270 650 275Q680 285 690 305Q700 330 680 345Q650 360 620 350Q595 340 590 315Q585 295 600 285Z",
+];
+
 const formatGeoLabel = (value: string) =>
   value.trim().length === 0 || value === "unknown"
     ? "Unknown"
@@ -486,12 +495,16 @@ export default function Dashboard({ siteId }: { siteId?: string }) {
                   <div className="relative h-64 w-full overflow-hidden rounded-md border bg-muted/20">
                     <svg viewBox="0 0 800 420" className="h-full w-full">
                       <rect x="0" y="0" width="800" height="420" rx="24" fill="hsl(var(--muted))" opacity="0.35" />
-                      <rect x="60" y="90" width="210" height="110" rx="48" fill="hsl(var(--muted))" opacity="0.8" />
-                      <rect x="170" y="220" width="130" height="150" rx="60" fill="hsl(var(--muted))" opacity="0.8" />
-                      <rect x="330" y="110" width="130" height="150" rx="45" fill="hsl(var(--muted))" opacity="0.8" />
-                      <rect x="370" y="250" width="140" height="130" rx="55" fill="hsl(var(--muted))" opacity="0.8" />
-                      <rect x="500" y="95" width="230" height="170" rx="60" fill="hsl(var(--muted))" opacity="0.8" />
-                      <rect x="570" y="285" width="170" height="90" rx="50" fill="hsl(var(--muted))" opacity="0.8" />
+                      {worldMapPaths.map((path, index) => (
+                        <path
+                          key={`${path}-${index}`}
+                          d={path}
+                          fill="hsl(var(--muted))"
+                          opacity="0.8"
+                          stroke="hsl(var(--border))"
+                          strokeWidth="1"
+                        />
+                      ))}
                       {geoPins.map((pin) => (
                         <g key={pin.label}>
                           <circle cx={pin.x} cy={pin.y} r={pin.size + 2} fill="hsl(var(--primary))" opacity="0.25" />
