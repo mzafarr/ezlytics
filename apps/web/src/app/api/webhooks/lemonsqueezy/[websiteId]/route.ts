@@ -62,6 +62,17 @@ const getAttributionSnapshot = async (siteId: string, visitorId: string) => {
 
 const getGoalName = (amount: number | null) => (amount === 0 ? "free_trial" : "payment");
 
+const getPaymentEventType = (eventName: string, attributes: Record<string, unknown>) => {
+  const status = getString(attributes.status).toLowerCase();
+  if (attributes.refunded === true || status === "refunded") {
+    return "refund";
+  }
+  if (eventName === "subscription_payment_success") {
+    return "renewal";
+  }
+  return "new";
+};
+
 const safeEqual = (left: string, right: string) => {
   const leftBuffer = Buffer.from(left);
   const rightBuffer = Buffer.from(right);
@@ -174,8 +185,10 @@ export const POST = async (
   const customerId = getString(attributes.customer_id) || getString(attributes.customer);
   const attribution = await getAttributionSnapshot(siteRecord.id, visitorId);
 
+  const paymentEventType = getPaymentEventType(eventName, attributes);
   const paymentMetadata: Record<string, unknown> = {
     provider: "lemonsqueezy",
+    event_type: paymentEventType,
     transaction_id: transactionId || null,
     order_id: getString(data.id) || null,
     order_number: getString(attributes.order_number) || null,
@@ -195,6 +208,7 @@ export const POST = async (
 
   const goalMetadata = {
     provider: "lemonsqueezy",
+    event_type: paymentEventType,
     transaction_id: transactionId || null,
     amount,
     currency: currency || null,
@@ -246,12 +260,13 @@ export const POST = async (
       amount: amount ?? 0,
       currency: currency || "usd",
       provider: "lemonsqueezy",
+      eventType: paymentEventType,
       transactionId: transactionId || eventId,
       customerId: customerId || null,
       email: null,
       name: null,
-      renewal: false,
-      refunded: false,
+      renewal: paymentEventType === "renewal",
+      refunded: paymentEventType === "refund",
       createdAt: timestamp,
     });
 

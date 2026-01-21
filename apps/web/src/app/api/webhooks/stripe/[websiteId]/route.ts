@@ -165,10 +165,25 @@ export const POST = async (
   const amount = parseAmount(eventObject.amount_total);
   const currency = getString(eventObject.currency).toLowerCase();
   const customerId = getString(eventObject.customer);
+  const paymentStatus = getString(eventObject.payment_status).toLowerCase();
+  const isRefunded = paymentStatus === "refunded";
+  const existingPayment =
+    !isRefunded && customerId
+      ? await db.query.payment.findFirst({
+          columns: { id: true },
+          where: (payments) =>
+            and(
+              eq(payments.siteId, siteRecord.id),
+              eq(payments.customerId, customerId),
+              eq(payments.provider, "stripe"),
+            ),
+        })
+      : null;
+  const paymentEventType = isRefunded ? "refund" : existingPayment ? "renewal" : "new";
   const attribution = await getAttributionSnapshot(siteRecord.id, visitorId);
-
   const paymentMetadata: Record<string, unknown> = {
     provider: "stripe",
+    event_type: paymentEventType,
     transaction_id: transactionId || null,
     checkout_session_id: getString(eventObject.id) || null,
     amount,
@@ -185,6 +200,7 @@ export const POST = async (
 
   const goalMetadata = {
     provider: "stripe",
+    event_type: paymentEventType,
     transaction_id: transactionId || null,
     amount,
     currency: currency || null,
@@ -236,12 +252,13 @@ export const POST = async (
       amount: amount ?? 0,
       currency: currency || "usd",
       provider: "stripe",
+      eventType: paymentEventType,
       transactionId: transactionId || eventId,
       customerId: customerId || null,
       email: null,
       name: null,
-      renewal: false,
-      refunded: false,
+      renewal: paymentEventType === "renewal",
+      refunded: paymentEventType === "refund",
       createdAt: timestamp,
     });
 

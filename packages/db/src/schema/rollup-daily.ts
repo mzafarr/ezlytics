@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm";
-import { date, index, integer, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
+import { date, index, integer, jsonb, pgTable, text, uniqueIndex } from "drizzle-orm/pg-core";
 
 import { site } from "./site";
 
@@ -16,6 +16,7 @@ export const rollupDaily = pgTable(
     pageviews: integer("pageviews").default(0).notNull(),
     goals: integer("goals").default(0).notNull(),
     revenue: integer("revenue").default(0).notNull(),
+    revenueByType: jsonb("revenue_by_type").notNull().default({ new: 0, renewal: 0, refund: 0 }),
   },
   (table) => [
     index("rollup_daily_siteId_idx").on(table.siteId),

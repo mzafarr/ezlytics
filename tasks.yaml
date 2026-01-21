@@ -171,7 +171,7 @@ tasks:
       - "Typecheck passes"
 
   - title: "US-017: Store event metadata for journeys"
-    completed: false
+    completed: true
     parallel_group: 8
     description: "As a user, I want event parameters stored so journey details can show metadata."
     acceptance_criteria:

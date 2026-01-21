@@ -8,6 +8,11 @@ export type RollupMetrics = {
   pageviews: number;
   goals: number;
   revenue: number;
+  revenueByType: {
+    new: number;
+    renewal: number;
+    refund: number;
+  };
 };
 
 export type RollupDimension =
@@ -36,10 +41,22 @@ const normalizeMetrics = (metrics: RollupMetrics): RollupMetrics => ({
   pageviews: normalizeMetric(metrics.pageviews),
   goals: normalizeMetric(metrics.goals),
   revenue: normalizeMetric(metrics.revenue),
+  revenueByType: {
+    new: normalizeMetric(metrics.revenueByType.new),
+    renewal: normalizeMetric(metrics.revenueByType.renewal),
+    refund: normalizeMetric(metrics.revenueByType.refund),
+  },
 });
 
 const hasMetrics = (metrics: RollupMetrics) =>
-  Object.values(metrics).some((value) => value > 0);
+  metrics.visitors > 0 ||
+  metrics.sessions > 0 ||
+  metrics.pageviews > 0 ||
+  metrics.goals > 0 ||
+  metrics.revenue > 0 ||
+  metrics.revenueByType.new > 0 ||
+  metrics.revenueByType.renewal > 0 ||
+  metrics.revenueByType.refund > 0;
 
 const normalizeDimensionValue = (value: string, maxLength = 128) => {
   const trimmed = value.trim();
@@ -107,6 +124,11 @@ export const metricsForEvent = ({
     pageviews: 0,
     goals: 0,
     revenue: 0,
+    revenueByType: {
+      new: 0,
+      renewal: 0,
+      refund: 0,
+    },
   };
 
   if (type === "pageview") {
@@ -117,8 +139,13 @@ export const metricsForEvent = ({
     metrics.goals = 1;
   } else if (type === "payment") {
     const amount = getRevenueAmount(metadata);
+    const eventType = metadata?.event_type;
+    const isEventType = eventType === "new" || eventType === "renewal" || eventType === "refund";
     if (amount !== null) {
       metrics.revenue = amount;
+      if (isEventType) {
+        metrics.revenueByType[eventType] = amount;
+      }
     }
   }
 
@@ -157,7 +184,12 @@ export const upsertRollups = async ({
       siteId,
       date: bucketDate,
       hour,
-      ...normalized,
+      visitors: normalized.visitors,
+      sessions: normalized.sessions,
+      pageviews: normalized.pageviews,
+      goals: normalized.goals,
+      revenue: normalized.revenue,
+      revenueByType: normalized.revenueByType,
     })
     .onConflictDoUpdate({
       target: [rollupHourly.siteId, rollupHourly.date, rollupHourly.hour],
@@ -167,6 +199,13 @@ export const upsertRollups = async ({
         pageviews: sql`${rollupHourly.pageviews} + ${normalized.pageviews}`,
         goals: sql`${rollupHourly.goals} + ${normalized.goals}`,
         revenue: sql`${rollupHourly.revenue} + ${normalized.revenue}`,
+        revenueByType: sql`jsonb_set(
+          jsonb_set(
+            jsonb_set(${rollupHourly.revenueByType}, '{new}', to_jsonb((${rollupHourly.revenueByType}->>'new')::int + ${normalized.revenueByType.new}), true),
+            '{renewal}', to_jsonb((${rollupHourly.revenueByType}->>'renewal')::int + ${normalized.revenueByType.renewal}), true
+          ),
+          '{refund}', to_jsonb((${rollupHourly.revenueByType}->>'refund')::int + ${normalized.revenueByType.refund}), true
+        )`,
       },
     });
 
@@ -176,7 +215,12 @@ export const upsertRollups = async ({
       id: randomUUID(),
       siteId,
       date: bucketDate,
-      ...normalized,
+      visitors: normalized.visitors,
+      sessions: normalized.sessions,
+      pageviews: normalized.pageviews,
+      goals: normalized.goals,
+      revenue: normalized.revenue,
+      revenueByType: normalized.revenueByType,
     })
     .onConflictDoUpdate({
       target: [rollupDaily.siteId, rollupDaily.date],
@@ -186,6 +230,13 @@ export const upsertRollups = async ({
         pageviews: sql`${rollupDaily.pageviews} + ${normalized.pageviews}`,
         goals: sql`${rollupDaily.goals} + ${normalized.goals}`,
         revenue: sql`${rollupDaily.revenue} + ${normalized.revenue}`,
+        revenueByType: sql`jsonb_set(
+          jsonb_set(
+            jsonb_set(${rollupDaily.revenueByType}, '{new}', to_jsonb((${rollupDaily.revenueByType}->>'new')::int + ${normalized.revenueByType.new}), true),
+            '{renewal}', to_jsonb((${rollupDaily.revenueByType}->>'renewal')::int + ${normalized.revenueByType.renewal}), true
+          ),
+          '{refund}', to_jsonb((${rollupDaily.revenueByType}->>'refund')::int + ${normalized.revenueByType.refund}), true
+        )`,
       },
     });
 };
@@ -302,7 +353,12 @@ export const upsertDimensionRollups = async ({
         hour,
         dimension: entry.dimension,
         dimensionValue,
-        ...normalized,
+        visitors: normalized.visitors,
+        sessions: normalized.sessions,
+        pageviews: normalized.pageviews,
+        goals: normalized.goals,
+        revenue: normalized.revenue,
+        revenueByType: normalized.revenueByType,
       })
       .onConflictDoUpdate({
         target: [
@@ -318,6 +374,13 @@ export const upsertDimensionRollups = async ({
           pageviews: sql`${rollupDimensionHourly.pageviews} + ${normalized.pageviews}`,
           goals: sql`${rollupDimensionHourly.goals} + ${normalized.goals}`,
           revenue: sql`${rollupDimensionHourly.revenue} + ${normalized.revenue}`,
+          revenueByType: sql`jsonb_set(
+            jsonb_set(
+              jsonb_set(${rollupDimensionHourly.revenueByType}, '{new}', to_jsonb((${rollupDimensionHourly.revenueByType}->>'new')::int + ${normalized.revenueByType.new}), true),
+              '{renewal}', to_jsonb((${rollupDimensionHourly.revenueByType}->>'renewal')::int + ${normalized.revenueByType.renewal}), true
+            ),
+            '{refund}', to_jsonb((${rollupDimensionHourly.revenueByType}->>'refund')::int + ${normalized.revenueByType.refund}), true
+          )`,
         },
       });
 
@@ -329,7 +392,12 @@ export const upsertDimensionRollups = async ({
         date: bucketDate,
         dimension: entry.dimension,
         dimensionValue,
-        ...normalized,
+        visitors: normalized.visitors,
+        sessions: normalized.sessions,
+        pageviews: normalized.pageviews,
+        goals: normalized.goals,
+        revenue: normalized.revenue,
+        revenueByType: normalized.revenueByType,
       })
       .onConflictDoUpdate({
         target: [
@@ -344,6 +412,13 @@ export const upsertDimensionRollups = async ({
           pageviews: sql`${rollupDimensionDaily.pageviews} + ${normalized.pageviews}`,
           goals: sql`${rollupDimensionDaily.goals} + ${normalized.goals}`,
           revenue: sql`${rollupDimensionDaily.revenue} + ${normalized.revenue}`,
+          revenueByType: sql`jsonb_set(
+            jsonb_set(
+              jsonb_set(${rollupDimensionDaily.revenueByType}, '{new}', to_jsonb((${rollupDimensionDaily.revenueByType}->>'new')::int + ${normalized.revenueByType.new}), true),
+              '{renewal}', to_jsonb((${rollupDimensionDaily.revenueByType}->>'renewal')::int + ${normalized.revenueByType.renewal}), true
+            ),
+            '{refund}', to_jsonb((${rollupDimensionDaily.revenueByType}->>'refund')::int + ${normalized.revenueByType.refund}), true
+          )`,
         },
       });
   }

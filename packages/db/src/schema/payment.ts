@@ -1,7 +1,9 @@
 import { relations } from "drizzle-orm";
-import { boolean, index, integer, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, index, integer, pgEnum, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 
 import { site } from "./site";
+
+export const paymentEventType = pgEnum("payment_event_type", ["new", "renewal", "refund"]);
 
 export const payment = pgTable(
   "payment",
@@ -15,6 +17,7 @@ export const payment = pgTable(
     amount: integer("amount").notNull(),
     currency: text("currency").notNull(),
     provider: text("provider").notNull(),
+    eventType: paymentEventType("event_type").notNull().default("new"),
     transactionId: text("transaction_id").notNull(),
     customerId: text("customer_id"),
     email: text("email"),

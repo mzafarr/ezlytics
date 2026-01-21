@@ -40,6 +40,7 @@ const buildMetadata = (payload: z.infer<typeof bodySchema>) => {
     transaction_id: payload.transaction_id,
     amount: payload.amount,
     currency: payload.currency,
+    event_type: payload.refunded ? "refund" : payload.renewal ? "renewal" : "new",
   };
 
   if (payload.customer_id) {
@@ -69,6 +70,7 @@ const buildGoalMetadata = (payload: z.infer<typeof bodySchema>) => ({
   transaction_id: payload.transaction_id,
   amount: payload.amount,
   currency: payload.currency,
+  event_type: payload.refunded ? "refund" : payload.renewal ? "renewal" : "new",
 });
 
 const rateLimitResponse = (retryAfter: number) =>
@@ -128,6 +130,7 @@ export const POST = async (request: NextRequest) => {
     amount: parsed.data.amount,
     currency: parsed.data.currency,
     provider: "custom",
+    eventType: parsed.data.refunded ? "refund" : parsed.data.renewal ? "renewal" : "new",
     transactionId: parsed.data.transaction_id,
     customerId: parsed.data.customer_id ?? null,
     email: parsed.data.email ?? null,
