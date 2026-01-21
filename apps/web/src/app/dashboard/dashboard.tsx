@@ -46,6 +46,19 @@ const formatCurrency = (value: number) => `$${value.toLocaleString()}`;
 const formatRefund = (value: number) =>
   value > 0 ? `-$${value.toLocaleString()}` : "$0";
 
+const formatDuration = (durationMs: number) => {
+  if (!Number.isFinite(durationMs) || durationMs <= 0) {
+    return "0s";
+  }
+  const totalSeconds = Math.round(durationMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes > 0) {
+    return `${minutes}m ${seconds}s`;
+  }
+  return `${seconds}s`;
+};
+
 const toNumber = (value: unknown) => {
   const numeric = typeof value === "number" ? value : Number(value);
   return Number.isFinite(numeric) ? numeric : 0;
@@ -185,6 +198,23 @@ export default function Dashboard({ siteId }: { siteId?: string }) {
   }, [activeRollupQuery.data?.daily]);
 
   const hasRevenueData = revenueTotals.total > 0;
+  const sessionTotals = useMemo(() => {
+    const totals = { sessions: 0, bounced: 0, durationMs: 0 };
+    for (const entry of activeRollupQuery.data?.daily ?? []) {
+      totals.sessions += toNumber(entry.sessions);
+      totals.bounced += toNumber(entry.bouncedSessions);
+      totals.durationMs += toNumber(entry.avgSessionDurationMs);
+    }
+    return totals;
+  }, [activeRollupQuery.data?.daily]);
+  const bounceRate =
+    sessionTotals.sessions === 0
+      ? 0
+      : (sessionTotals.bounced / sessionTotals.sessions) * 100;
+  const avgSessionDurationMs =
+    sessionTotals.sessions === 0
+      ? 0
+      : Math.round(sessionTotals.durationMs / sessionTotals.sessions);
 
   const isLoading =
     sitesQuery.isLoading || rollupQueries.isLoading || activeRollupQuery.isLoading;
@@ -298,6 +328,27 @@ export default function Dashboard({ siteId }: { siteId?: string }) {
             )}
           </CardContent>
         </Card>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Bounce rate</CardTitle>
+              <CardDescription>Sessions with a single pageview.</CardDescription>
+            </CardHeader>
+            <CardContent className="text-2xl font-semibold">
+              {bounceRate.toFixed(1)}%
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Avg session</CardTitle>
+              <CardDescription>Average time between first and last pageview.</CardDescription>
+            </CardHeader>
+            <CardContent className="text-2xl font-semibold">
+              {formatDuration(avgSessionDurationMs)}
+            </CardContent>
+          </Card>
+        </div>
 
         <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
           <Card>

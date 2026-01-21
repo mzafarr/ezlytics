@@ -73,6 +73,7 @@ userStories:
       - Verify in browser using dev-browser skill
       - Typecheck passes
     priority: 6
+    completed: true
     passes: false
     notes: ""
   - id: US-007
