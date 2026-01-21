@@ -134,21 +134,28 @@ export function StatsRow({ dashboardData, tooltips }: StatsRowProps) {
   // Extract metrics from dashboardData
   const {
     visitorsCount,
+    visitorsNowCount,
     totalRevenue,
     primaryConversionRate,
     revenuePerVisitor,
     bounceRate,
     avgSessionDurationMs,
-    // Note: live visitors might not be in hook yet, using placeholder
   } = dashboardData as any;
 
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-6 gap-6 mb-8 w-full overflow-x-auto pb-4 lg:pb-0">
+    <div className="grid grid-cols-2 lg:grid-cols-6 xl:grid-cols-7 gap-6 mb-8 w-full overflow-x-auto pb-4 lg:pb-0">
       <StatCard
         title="Visitors"
         value={visitorsCount?.toLocaleString() ?? "0"}
         change="+0.0%" // Todo: Implement comparison
         trend="up"
+      />
+      <StatCard
+        title="Visitors now"
+        value={visitorsNowCount?.toLocaleString() ?? "0"}
+        change="+0.0%"
+        trend="up"
+        showSparkline={false}
       />
       <StatCard
         title="Revenue"

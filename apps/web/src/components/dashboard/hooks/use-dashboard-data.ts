@@ -82,6 +82,12 @@ export function useDashboardData({
     ...trpc.analytics.rollups.queryOptions(rollupInput ?? { siteId: "" }),
     enabled: Boolean(rollupInput),
   });
+  const visitorsNowQuery = useQuery({
+    ...trpc.analytics.visitorsNow.queryOptions(
+      latestSite?.id ? { siteId: latestSite.id } : { siteId: "" },
+    ),
+    enabled: Boolean(latestSite?.id),
+  });
 
   const activeFilters = useMemo(() => {
     return (Object.entries(filters) as Array<[keyof Filters, string]>)
@@ -676,6 +682,7 @@ export function useDashboardData({
     primaryGoalLabel,
     primaryConversionCount,
     primaryConversionRate,
+    visitorsNowCount: visitorsNowQuery.data?.count ?? 0,
     // Series
     visitorsByDateDisplay,
     pageviewsByDateDisplay,

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { z } from "zod";
 
-import { and, db, eq, gte, lte, site } from "@my-better-t-app/db";
+import { and, db, eq, gte, lte, rawEvent, site, sql } from "@my-better-t-app/db";
 import { TRPCError } from "@trpc/server";
 
 import { protectedProcedure, publicProcedure, router } from "../index";
@@ -212,6 +212,32 @@ export const appRouter = router({
           daily,
           dimensions,
         };
+      }),
+    visitorsNow: protectedProcedure
+      .input(
+        z.object({
+          siteId: z.string().min(1, "Site id is required"),
+        }),
+      )
+      .query(async ({ ctx, input }) => {
+        const siteRecord = await db.query.site.findFirst({
+          columns: { id: true },
+          where: (sites, { eq }) => and(eq(sites.id, input.siteId), eq(sites.userId, ctx.session.user.id)),
+        });
+
+        if (!siteRecord) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Site not found" });
+        }
+
+        const cutoff = Date.now() - 5 * 60 * 1000;
+        const [result] = await db
+          .select({
+            count: sql<number>`count(distinct ${rawEvent.visitorId})`,
+          })
+          .from(rawEvent)
+          .where(and(eq(rawEvent.siteId, siteRecord.id), gte(rawEvent.timestamp, cutoff)));
+
+        return { count: Number(result?.count ?? 0) };
       }),
   }),
 });
