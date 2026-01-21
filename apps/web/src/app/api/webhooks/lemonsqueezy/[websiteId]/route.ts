@@ -217,6 +217,7 @@ export const POST = async (
   const sanitizedGoalMetadata = sanitizeMetadataRecord(goalMetadata) ?? {};
 
   const timestamp = new Date();
+  const eventTimestamp = timestamp.getTime();
   const paymentMetrics = metricsForEvent({ type: "payment", metadata: sanitizedPaymentMetadata });
   const goalMetrics = metricsForEvent({ type: "goal", metadata: sanitizedGoalMetadata });
 
@@ -238,6 +239,7 @@ export const POST = async (
       name: "lemonsqueezy_checkout",
       visitorId,
       sessionId: sessionId || null,
+      timestamp: eventTimestamp,
       metadata: sanitizedPaymentMetadata,
     });
 
@@ -249,6 +251,7 @@ export const POST = async (
       name: getGoalName(amount),
       visitorId,
       sessionId: sessionId || null,
+      timestamp: eventTimestamp,
       metadata: sanitizedGoalMetadata,
     });
 

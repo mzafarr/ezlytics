@@ -489,6 +489,7 @@ export const POST = async (request: NextRequest) => {
   const createdAt = payload.timestamp ?? new Date();
   const metadata = sanitizeMetadataRecord(payload.metadata ?? null, MAX_METADATA_VALUE_LENGTH);
   const eventId = payload.eventId ?? null;
+  const timestamp = createdAt.getTime();
 
   try {
     await db.insert(rawEvent).values({
@@ -499,6 +500,7 @@ export const POST = async (request: NextRequest) => {
       name: payload.name ?? null,
       visitorId: payload.visitorId,
       sessionId: payload.sessionId ?? null,
+      timestamp,
       metadata,
       normalized,
       createdAt,

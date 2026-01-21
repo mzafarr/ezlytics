@@ -6,3 +6,4 @@
 2026-01-21T00:49:20Z - Completed US-018: displayed metadata in visitor timeline with ordering/grouping and lint passed.
 
 [2026-01-21T00:54:33Z] Completed US-019: ordered visitor timeline by timestamp samples; lint passed.
+[2026-01-21T01:14:23.877Z] Completed US-001: added raw_event timestamp/session columns + indexes + migration; lint passed.

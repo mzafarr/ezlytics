@@ -170,6 +170,7 @@ export const POST = async (request: NextRequest) => {
 
   const metadata = sanitizeMetadataRecord(parsed.data.metadata ?? null, MAX_METADATA_VALUE_LENGTH);
   const createdAt = new Date();
+  const timestamp = createdAt.getTime();
 
   await db.insert(rawEvent).values({
     id: randomUUID(),
@@ -178,6 +179,7 @@ export const POST = async (request: NextRequest) => {
     type: "goal",
     name: parsed.data.name,
     visitorId,
+    timestamp,
     metadata,
     createdAt,
   });

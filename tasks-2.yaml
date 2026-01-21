@@ -1,0 +1,217 @@
+project: Data Enrichment & Metrics Enablement (Phase 2)
+branchName: ralph/data-enrichment-metrics-phase-2
+description: Phase 2 upgrades the data model and ingestion so placeholders become real metrics (sessions, geo, revenue types, and journeys).
+userStories:
+  - id: US-001
+    title: Add timestamp and session_id columns to events
+    description: As a developer, I need to store event timestamps and session IDs so sessions and timelines can be computed.
+    acceptanceCriteria:
+      - Events table includes `timestamp` (ms) column
+      - Events table includes `session_id` column
+      - Indexes added for `site_id` + `timestamp` and for `session_id`
+      - Migration applied successfully
+      - Typecheck passes
+    priority: 1
+    passes: true
+    notes: ""
+  - id: US-002
+    title: Validate timestamps and session IDs on ingestion
+    description: As a developer, I want ingestion to validate `ts` and `session_id` so malformed events are rejected.
+    acceptanceCriteria:
+      - Ingestion validates `ts` is a number and not more than 24h in the future
+      - Ingestion validates `session_id` is a string <= 128 chars
+      - Invalid payloads return 4xx errors
+      - Typecheck passes
+    priority: 2
+    passes: false
+    notes: ""
+  - id: US-003
+    title: Add timestamps and session IDs in the tracking script
+    description: As a developer, I want client events to include timestamps and session IDs so sessions can be computed.
+    acceptanceCriteria:
+      - Tracking script includes `ts` (ms) on every event
+      - Tracking script includes `session_id` on every event
+      - Session rotates after 30 minutes of inactivity
+      - Typecheck passes
+    priority: 3
+    passes: false
+    notes: ""
+  - id: US-004
+    title: Compute session metrics (bounce and duration)
+    description: As a user, I want bounce rate and session time computed from sessions.
+    acceptanceCriteria:
+      - Sessions are derived by `session_id` with pageview counts
+      - Bounce is a session with exactly 1 pageview
+      - Session duration = last_event_ts - first_event_ts
+      - Typecheck passes
+    priority: 4
+    passes: false
+    notes: ""
+  - id: US-005
+    title: Store session metrics in rollups
+    description: As a developer, I want rollups to include session metrics so dashboards are fast.
+    acceptanceCriteria:
+      - Daily rollups store sessions, bounced_sessions, avg_session_duration
+      - Hourly rollups store sessions, bounced_sessions, avg_session_duration
+      - Rollup job populates the new fields
+      - Typecheck passes
+    priority: 5
+    passes: false
+    notes: ""
+  - id: US-006
+    title: Show bounce rate and session time in Overview KPIs
+    description: As a user, I want bounce rate and session time visible in Overview KPIs.
+    acceptanceCriteria:
+      - Overview KPIs render bounce rate from computed data
+      - Overview KPIs render session time from computed data
+      - Coming soon placeholders are removed when data exists
+      - Verify in browser using dev-browser skill
+      - Typecheck passes
+    priority: 6
+    passes: false
+    notes: ""
+  - id: US-007
+    title: Compute Visitors Now (last 5 minutes)
+    description: As a user, I want a realtime visitors now count.
+    acceptanceCriteria:
+      - Query counts distinct visitors in the last 5 minutes for a site
+      - Result is exposed to the overview KPI data source
+      - Updates on refresh (no live push required)
+      - Typecheck passes
+    priority: 7
+    passes: false
+    notes: ""
+  - id: US-008
+    title: Display Visitors Now in Overview KPIs
+    description: As a user, I want visitors now shown in the Overview KPIs.
+    acceptanceCriteria:
+      - Overview KPI shows visitors now from the query
+      - Refreshing the page updates the count
+      - Coming soon placeholder removed when data exists
+      - Verify in browser using dev-browser skill
+      - Typecheck passes
+    priority: 8
+    passes: false
+    notes: ""
+  - id: US-009
+    title: Add geo fields to events schema
+    description: As a developer, I need schema updates to store region/city/lat/lng so geo queries are possible.
+    acceptanceCriteria:
+      - Events table includes `region`, `city`, `latitude`, `longitude` columns
+      - Migration applied successfully
+      - Typecheck passes
+    priority: 9
+    passes: false
+    notes: ""
+  - id: US-010
+    title: Resolve geo data on ingestion
+    description: As a user, I want region/city breakdowns and maps backed by geo enrichment.
+    acceptanceCriteria:
+      - Ingestion resolves region, city, lat, lng via MaxMind GeoLite2
+      - Geo fields are stored on each event row
+      - Unknown geo values are stored as nulls
+      - Typecheck passes
+    priority: 10
+    passes: false
+    notes: ""
+  - id: US-011
+    title: Include geo dimensions in rollups
+    description: As a developer, I want rollups to include region and city so dashboards are fast.
+    acceptanceCriteria:
+      - Daily rollups include region and city dimensions
+      - Hourly rollups include region and city dimensions
+      - Rollup job populates region/city aggregates
+      - Typecheck passes
+    priority: 11
+    passes: false
+    notes: ""
+  - id: US-012
+    title: Replace geo placeholders with map and region/city tabs
+    description: As a user, I want geo map and region/city breakdowns to replace placeholders.
+    acceptanceCriteria:
+      - Map renders geo distribution when data exists
+      - Region and City tabs show ranked lists
+      - Coming soon placeholders removed when data exists
+      - Verify in browser using dev-browser skill
+      - Typecheck passes
+    priority: 12
+    passes: false
+    notes: ""
+  - id: US-013
+    title: Add revenue event types to payments schema
+    description: As a developer, I need to store revenue event types so rollups can split new, renewal, and refund.
+    acceptanceCriteria:
+      - "Payments table includes `event_type` enum: new | renewal | refund"
+      - Rollup schema includes revenue_by_type totals
+      - Migration applied successfully
+      - Typecheck passes
+    priority: 13
+    passes: false
+    notes: ""
+  - id: US-014
+    title: Set revenue event_type in webhooks
+    description: As a developer, I want Stripe and LemonSqueezy webhooks to set event_type correctly.
+    acceptanceCriteria:
+      - Stripe webhook parser sets event_type for new, renewal, refund
+      - LemonSqueezy webhook parser sets event_type for new, renewal, refund
+      - Persisted payment rows include event_type
+      - Typecheck passes
+    priority: 14
+    passes: false
+    notes: ""
+  - id: US-015
+    title: Aggregate revenue by event type in rollups
+    description: As a developer, I want rollups to include revenue_by_type totals.
+    acceptanceCriteria:
+      - Rollup job sums revenue by event_type into revenue_by_type fields
+      - Totals include new, renewal, and refund
+      - Typecheck passes
+    priority: 15
+    passes: false
+    notes: ""
+  - id: US-016
+    title: Show revenue split by new/renewal/refund
+    description: As a user, I want revenue charts and breakdowns to show refunds and new revenue separately.
+    acceptanceCriteria:
+      - Revenue chart shows new vs renewal vs refund (stacked or separate)
+      - Refund totals appear in the revenue summary
+      - Coming soon placeholder removed when data exists
+      - Verify in browser using dev-browser skill
+      - Typecheck passes
+    priority: 16
+    passes: false
+    notes: ""
+  - id: US-017
+    title: Store event metadata for journeys
+    description: As a user, I want event parameters stored so journey details can show metadata.
+    acceptanceCriteria:
+      - Events table includes `metadata` JSON column
+      - Ingestion accepts `metadata` JSON for goal/identify events
+      - Metadata is sanitized to strip HTML and scripts
+      - Sensitive metadata values are encrypted at rest
+      - Typecheck passes
+    priority: 17
+    passes: false
+    notes: ""
+  - id: US-018
+    title: Display metadata in journey timeline
+    description: As a user, I want to see event parameters in visitor journeys.
+    acceptanceCriteria:
+      - Visitor timeline displays metadata in expandable rows
+      - Metadata rendering is readable and labeled
+      - Verify in browser using dev-browser skill
+      - Typecheck passes
+    priority: 18
+    passes: false
+    notes: ""
+  - id: US-019
+    title: Order journey timeline by timestamps
+    description: As a user, I want journeys ordered by real timestamps.
+    acceptanceCriteria:
+      - Visitor timeline ordered by `timestamp`
+      - Timeline groups events by day with human-readable times
+      - Verify in browser using dev-browser skill
+      - Typecheck passes
+    priority: 19
+    passes: false
+    notes: ""

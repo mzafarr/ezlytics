@@ -145,6 +145,7 @@ export const POST = async (request: NextRequest) => {
     const goalMetadata = buildGoalMetadata(parsed.data);
     const sanitizedPaymentMetadata = sanitizeMetadataRecord(paymentMetadata) ?? {};
     const sanitizedGoalMetadata = sanitizeMetadataRecord(goalMetadata) ?? {};
+    const timestamp = createdAt.getTime();
 
     await db.insert(rawEvent).values({
       id: randomUUID(),
@@ -153,6 +154,7 @@ export const POST = async (request: NextRequest) => {
       type: "payment",
       name: "custom_payment",
       visitorId: parsed.data.visitor_id,
+      timestamp,
       metadata: sanitizedPaymentMetadata,
       createdAt,
     });
@@ -164,6 +166,7 @@ export const POST = async (request: NextRequest) => {
       type: "goal",
       name: getGoalName(parsed.data.amount),
       visitorId: parsed.data.visitor_id,
+      timestamp,
       metadata: sanitizedGoalMetadata,
       createdAt,
     });
