@@ -8,6 +8,8 @@ export type AnalyticsSample = {
   content: string;
   term: string;
   country: string;
+  region: string;
+  city: string;
   device: string;
   browser: string;
   os: string;
@@ -31,6 +33,8 @@ export const analyticsSamples: AnalyticsSample[] = [
     content: "search-ad-1",
     term: "analytics platform",
     country: "US",
+    region: "California",
+    city: "San Francisco",
     device: "desktop",
     browser: "chrome",
     os: "macos",
@@ -55,6 +59,8 @@ export const analyticsSamples: AnalyticsSample[] = [
     content: "search-ad-1",
     term: "analytics platform",
     country: "US",
+    region: "California",
+    city: "San Francisco",
     device: "desktop",
     browser: "chrome",
     os: "macos",
@@ -79,6 +85,8 @@ export const analyticsSamples: AnalyticsSample[] = [
     content: "launch-thread",
     term: "datafast",
     country: "GB",
+    region: "England",
+    city: "London",
     device: "mobile",
     browser: "safari",
     os: "ios",
@@ -99,6 +107,8 @@ export const analyticsSamples: AnalyticsSample[] = [
     content: "launch-thread",
     term: "datafast",
     country: "GB",
+    region: "England",
+    city: "London",
     device: "mobile",
     browser: "safari",
     os: "ios",
@@ -119,6 +129,8 @@ export const analyticsSamples: AnalyticsSample[] = [
     content: "show-hn",
     term: "analytics",
     country: "DE",
+    region: "Berlin",
+    city: "Berlin",
     device: "desktop",
     browser: "firefox",
     os: "linux",
@@ -143,6 +155,8 @@ export const analyticsSamples: AnalyticsSample[] = [
     content: "show-hn",
     term: "analytics",
     country: "DE",
+    region: "Berlin",
+    city: "Berlin",
     device: "desktop",
     browser: "firefox",
     os: "linux",
@@ -163,6 +177,8 @@ export const analyticsSamples: AnalyticsSample[] = [
     content: "january-newsletter",
     term: "retention",
     country: "CA",
+    region: "Ontario",
+    city: "Toronto",
     device: "desktop",
     browser: "edge",
     os: "windows",
@@ -183,6 +199,8 @@ export const analyticsSamples: AnalyticsSample[] = [
     content: "january-newsletter",
     term: "retention",
     country: "CA",
+    region: "Ontario",
+    city: "Toronto",
     device: "desktop",
     browser: "edge",
     os: "windows",

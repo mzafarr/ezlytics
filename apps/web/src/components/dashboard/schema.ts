@@ -129,6 +129,8 @@ export type AnalyticsSample = {
   content: string;
   term: string;
   country: string;
+  region: string;
+  city: string;
   device: string;
   browser: string;
   os: string;
