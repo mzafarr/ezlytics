@@ -835,6 +835,7 @@
   }
 
   function sendGoal(name, metadata) {
+    var now = Date.now();
     var payload = {
       type: "goal",
       name: name,
@@ -843,9 +844,10 @@
       domain: domain,
       path: getCurrentPath(),
       referrer: document.referrer || "",
-      timestamp: new Date().toISOString(),
+      ts: now,
+      timestamp: new Date(now).toISOString(),
       visitorId: getVisitorId(),
-      sessionId: getSessionId(),
+      session_id: getSessionId(),
     };
     if (metadata) {
       payload.metadata = metadata;
@@ -866,6 +868,7 @@
     if (!normalized) {
       return;
     }
+    var now = Date.now();
     var identifyPayload = {
       type: "identify",
       websiteId: websiteId,
@@ -873,9 +876,10 @@
       domain: domain,
       path: getCurrentPath(),
       referrer: document.referrer || "",
-      timestamp: new Date().toISOString(),
+      ts: now,
+      timestamp: new Date(now).toISOString(),
       visitorId: getVisitorId(),
-      sessionId: getSessionId(),
+      session_id: getSessionId(),
       user_id: normalized.userId,
     };
     if (normalized.name) {
@@ -925,6 +929,7 @@
   }
 
   function sendPageview(referrerOverride) {
+    var now = Date.now();
     var payload = {
       type: "pageview",
       websiteId: websiteId,
@@ -932,9 +937,10 @@
       domain: domain,
       path: getCurrentPath(),
       referrer: referrerOverride || document.referrer || "",
-      timestamp: new Date().toISOString(),
+      ts: now,
+      timestamp: new Date(now).toISOString(),
       visitorId: getVisitorId(),
-      sessionId: getSessionId(),
+      session_id: getSessionId(),
     };
     var tracking = getTrackingParams();
     if (tracking) {

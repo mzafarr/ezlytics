@@ -35,7 +35,8 @@ userStories:
       - Session rotates after 30 minutes of inactivity
       - Typecheck passes
     priority: 3
-    passes: false
+    completed: true
+    passes: true
     notes: ""
   - id: US-004
     title: Compute session metrics (bounce and duration)
