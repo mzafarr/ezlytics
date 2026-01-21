@@ -1,5 +1,14 @@
 import { relations } from "drizzle-orm";
-import { bigint, index, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  index,
+  jsonb,
+  pgTable,
+  real,
+  text,
+  timestamp,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 
 import { site } from "./site";
 
@@ -19,6 +28,8 @@ export const rawEvent = pgTable(
     country: text("country"),
     region: text("region"),
     city: text("city"),
+    latitude: real("latitude"),
+    longitude: real("longitude"),
     metadata: jsonb("metadata"),
     normalized: jsonb("normalized"),
     createdAt: timestamp("created_at").defaultNow().notNull(),

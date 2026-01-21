@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 
 import { NextRequest, NextResponse } from "next/server";
+import * as maxmind from "maxmind";
 import { z } from "zod";
 
 import { buildApiKeyHeader, verifyApiKey } from "@my-better-t-app/api/api-key";
@@ -332,24 +334,91 @@ const parseUserAgent = (value: string | null) => {
 
 const normalizeCountry = (value: string | null) => {
   if (!value) {
-    return "unknown";
-  }
-  const trimmed = value.trim().toUpperCase();
-  if (!trimmed) {
-    return "unknown";
-  }
-  return trimmed.length > 2 ? trimmed.slice(0, 2) : trimmed;
-};
-
-const normalizeGeoValue = (value: string | null, fallback: string) => {
-  if (!value) {
-    return fallback;
+    return null;
   }
   const trimmed = value.trim();
   if (!trimmed) {
-    return fallback;
+    return null;
+  }
+  if (trimmed.toLowerCase() === "unknown") {
+    return null;
+  }
+  const upper = trimmed.toUpperCase();
+  return upper.length > 2 ? upper.slice(0, 2) : upper;
+};
+
+const normalizeGeoValue = (value: string | null) => {
+  if (!value) {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  if (trimmed.toLowerCase() === "unknown") {
+    return null;
   }
   return trimmed.length > MAX_STRING_LENGTH ? trimmed.slice(0, MAX_STRING_LENGTH) : trimmed;
+};
+
+const clampCoordinate = (value: number | null | undefined, min: number, max: number) => {
+  if (value == null || !Number.isFinite(value)) {
+    return null;
+  }
+  if (value < min || value > max) {
+    return null;
+  }
+  return value;
+};
+
+let geoReaderPromise: Promise<maxmind.Reader<maxmind.CityResponse>> | null = null;
+let geoReaderPath: string | null = null;
+
+const readGeoDatabase = (path: string) => {
+  if (!existsSync(path)) {
+    return null;
+  }
+  if (!geoReaderPromise || geoReaderPath !== path) {
+    geoReaderPath = path;
+    geoReaderPromise = maxmind.open<maxmind.CityResponse>(path).catch(() => {
+      geoReaderPromise = null;
+      geoReaderPath = null;
+      return Promise.reject(new Error("MaxMind database open failed"));
+    });
+  }
+  return geoReaderPromise;
+};
+
+const resolveGeoFromMaxMind = async (ip: string, mmdbPath: string) => {
+  if (!maxmind.validate(ip)) {
+    return null;
+  }
+  const readerPromise = readGeoDatabase(mmdbPath);
+  if (!readerPromise) {
+    return null;
+  }
+  let reader: maxmind.Reader<maxmind.CityResponse>;
+  try {
+    reader = await readerPromise;
+  } catch (error) {
+    return null;
+  }
+  if (!reader) {
+    return null;
+  }
+  const result = reader.get(ip);
+  if (!result) {
+    return null;
+  }
+  const region =
+    result.subdivisions?.[0]?.names?.en ?? result.subdivisions?.[0]?.names?.["en"];
+  return {
+    country: normalizeCountry(result.country?.iso_code ?? null),
+    region: normalizeGeoValue(region ?? null),
+    city: normalizeGeoValue(result.city?.names?.en ?? result.city?.names?.["en"] ?? null),
+    latitude: clampCoordinate(result.location?.latitude, -90, 90),
+    longitude: clampCoordinate(result.location?.longitude, -180, 180),
+  };
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -488,9 +557,21 @@ export const POST = async (request: NextRequest) => {
   await runRetentionCleanup();
 
   const { device, browser, os } = parseUserAgent(request.headers.get("user-agent"));
-  const country = normalizeCountry(request.headers.get("x-vercel-ip-country"));
-  const region = normalizeGeoValue(request.headers.get("x-vercel-ip-country-region"), "unknown");
-  const city = normalizeGeoValue(request.headers.get("x-vercel-ip-city"), "unknown");
+  const ipAddress = getClientIp(request);
+  const geoFromHeaders = {
+    country: normalizeCountry(request.headers.get("x-vercel-ip-country")),
+    region: normalizeGeoValue(request.headers.get("x-vercel-ip-country-region")),
+    city: normalizeGeoValue(request.headers.get("x-vercel-ip-city")),
+  };
+  const maxmindGeo =
+    env.GEOIP_MMDB_PATH && ipAddress
+      ? await resolveGeoFromMaxMind(ipAddress, env.GEOIP_MMDB_PATH)
+      : null;
+  const country = maxmindGeo?.country ?? geoFromHeaders.country ?? null;
+  const region = maxmindGeo?.region ?? geoFromHeaders.region ?? null;
+  const city = maxmindGeo?.city ?? geoFromHeaders.city ?? null;
+  const latitude = maxmindGeo?.latitude ?? null;
+  const longitude = maxmindGeo?.longitude ?? null;
 
   const normalized = {
     url: normalizeUrl(payload.path),
@@ -504,6 +585,8 @@ export const POST = async (request: NextRequest) => {
     country,
     region,
     city,
+    latitude,
+    longitude,
   };
 
   const createdAt = payload.ts !== undefined ? new Date(payload.ts) : payload.timestamp ?? new Date();
@@ -550,6 +633,8 @@ export const POST = async (request: NextRequest) => {
       country,
       region,
       city,
+      latitude,
+      longitude,
       metadata,
       normalized,
       createdAt,

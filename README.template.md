@@ -134,6 +134,7 @@ export async function POST(request: Request) {
 The ingestion endpoint at `/api/v1/ingest` enforces a strict allowlist and caps.
 
 - Max payload size: 32 KB default (override with `INGEST_MAX_PAYLOAD_BYTES`)
+- GeoIP enrichment: set `GEOIP_MMDB_PATH` to a GeoLite2-City mmdb to resolve region/city/lat/lng
 - Supported schema versions: `v=1` (default when omitted)
 - Allowed top-level keys:
   - `v`, `type`, `name`, `websiteId`, `domain`, `path`, `referrer`, `timestamp`, `visitorId`, `sessionId`, `eventId`, `metadata`
