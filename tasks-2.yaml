@@ -140,7 +140,7 @@ userStories:
       - Verify in browser using dev-browser skill
       - Typecheck passes
     priority: 12
-    passes: false
+    passes: true
     notes: ""
   - id: US-013
     title: Add revenue event types to payments schema
@@ -151,7 +151,7 @@ userStories:
       - Migration applied successfully
       - Typecheck passes
     priority: 13
-    passes: false
+    passes: true
     notes: ""
   - id: US-014
     title: Set revenue event_type in webhooks
@@ -162,7 +162,7 @@ userStories:
       - Persisted payment rows include event_type
       - Typecheck passes
     priority: 14
-    passes: false
+    passes: true
     notes: ""
   - id: US-015
     title: Aggregate revenue by event type in rollups
@@ -172,7 +172,7 @@ userStories:
       - Totals include new, renewal, and refund
       - Typecheck passes
     priority: 15
-    passes: false
+    passes: true
     notes: ""
   - id: US-016
     title: Show revenue split by new/renewal/refund
@@ -184,7 +184,7 @@ userStories:
       - Verify in browser using dev-browser skill
       - Typecheck passes
     priority: 16
-    passes: false
+    passes: true
     notes: ""
   - id: US-017
     title: Store event metadata for journeys
@@ -196,7 +196,7 @@ userStories:
       - Sensitive metadata values are encrypted at rest
       - Typecheck passes
     priority: 17
-    passes: false
+    passes: true
     notes: ""
   - id: US-018
     title: Display metadata in journey timeline
@@ -207,7 +207,7 @@ userStories:
       - Verify in browser using dev-browser skill
       - Typecheck passes
     priority: 18
-    passes: false
+    passes: true
     notes: ""
   - id: US-019
     title: Order journey timeline by timestamps
@@ -218,5 +218,5 @@ userStories:
       - Verify in browser using dev-browser skill
       - Typecheck passes
     priority: 19
-    passes: false
+    passes: true
     notes: ""
