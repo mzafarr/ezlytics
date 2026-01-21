@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { z } from "zod";
 
-import { and, db, eq, gte, lte, rawEvent, site, sql } from "@my-better-t-app/db";
+import { and, db, desc, eq, gte, isNotNull, lte, rawEvent, site, sql } from "@my-better-t-app/db";
 import { TRPCError } from "@trpc/server";
 
 import { protectedProcedure, publicProcedure, router } from "../index";
@@ -182,37 +182,62 @@ export const appRouter = router({
         const startDate = input.startDate ? input.startDate : null;
         const endDate = input.endDate ? input.endDate : null;
 
-        const daily = await db.query.rollupDaily.findMany({
-          where: (rollups, { and, eq, gte, lte }) => {
-            const clauses = [eq(rollups.siteId, siteRecord.id)];
-            if (startDate) {
-              clauses.push(gte(rollups.date, startDate));
-            }
-            if (endDate) {
-              clauses.push(lte(rollups.date, endDate));
-            }
-            return and(...clauses);
-          },
-        });
+         const daily = await db.query.rollupDaily.findMany({
+           where: (rollups, { and, eq, gte, lte }) => {
+             const clauses = [eq(rollups.siteId, siteRecord.id)];
+             if (startDate) {
+               clauses.push(gte(rollups.date, startDate));
+             }
+             if (endDate) {
+               clauses.push(lte(rollups.date, endDate));
+             }
+             return and(...clauses);
+           },
+         });
 
-        const dimensions = await db.query.rollupDimensionDaily.findMany({
-          where: (rollups, { and, eq, gte, lte }) => {
-            const clauses = [eq(rollups.siteId, siteRecord.id)];
-            if (startDate) {
-              clauses.push(gte(rollups.date, startDate));
-            }
-            if (endDate) {
-              clauses.push(lte(rollups.date, endDate));
-            }
-            return and(...clauses);
-          },
-        });
+         const dimensions = await db.query.rollupDimensionDaily.findMany({
+           where: (rollups, { and, eq, gte, lte }) => {
+             const clauses = [eq(rollups.siteId, siteRecord.id)];
+             if (startDate) {
+               clauses.push(gte(rollups.date, startDate));
+             }
+             if (endDate) {
+               clauses.push(lte(rollups.date, endDate));
+             }
+             return and(...clauses);
+           },
+         });
 
-        return {
-          daily,
-          dimensions,
-        };
-      }),
+         const geoPoints = await db.query.rawEvent.findMany({
+           columns: {
+             country: true,
+             latitude: true,
+             longitude: true,
+           },
+           where: (events, { and, eq, gte, lte, isNotNull }) => {
+             const clauses = [
+               eq(events.siteId, siteRecord.id),
+               isNotNull(events.latitude),
+               isNotNull(events.longitude),
+             ];
+             if (startDate) {
+               clauses.push(gte(events.createdAt, new Date(startDate)));
+             }
+             if (endDate) {
+               clauses.push(lte(events.createdAt, new Date(endDate)));
+             }
+             return and(...clauses);
+           },
+           orderBy: (events, { desc }) => [desc(events.createdAt)],
+           limit: 600,
+         });
+
+         return {
+           daily,
+           dimensions,
+           geoPoints,
+         };
+       }),
     visitorsNow: protectedProcedure
       .input(
         z.object({

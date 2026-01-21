@@ -21,31 +21,24 @@ import { cn } from "@/lib/utils";
 
 type RollupTotals = Record<string, number>;
 
-const geoPinPositions: Record<string, { x: number; y: number }> = {
-  US: { x: 160, y: 170 },
-  CA: { x: 150, y: 120 },
-  GB: { x: 365, y: 145 },
-  DE: { x: 395, y: 165 },
-  FR: { x: 380, y: 185 },
-  BR: { x: 235, y: 285 },
-  IN: { x: 560, y: 220 },
-  JP: { x: 665, y: 165 },
-  AU: { x: 640, y: 320 },
-};
-
-const worldMapPaths = [
-  "M80 120Q110 80 170 90Q230 90 260 130Q280 150 260 190Q240 220 190 210Q150 205 120 190Q90 175 70 150Q65 135 80 120Z",
-  "M200 230Q230 220 250 240Q270 260 260 300Q250 340 230 360Q210 370 200 340Q190 310 190 270Q190 245 200 230Z",
-  "M340 120Q360 100 390 110Q420 120 430 140Q435 160 410 170Q380 180 350 170Q330 160 330 140Q330 125 340 120Z",
-  "M360 190Q390 175 420 190Q450 205 450 235Q450 270 430 305Q415 325 390 320Q365 310 360 280Q350 240 360 190Z",
-  "M450 120Q480 90 540 105Q600 95 660 130Q700 150 720 190Q730 230 690 250Q650 265 610 250Q575 235 560 220Q535 205 515 210Q485 215 470 200Q440 180 450 120Z",
-  "M600 285Q620 270 650 275Q680 285 690 305Q700 330 680 345Q650 360 620 350Q595 340 590 315Q585 295 600 285Z",
-];
+const MAP_WIDTH = 800;
+const MAP_HEIGHT = 420;
+const MAP_LAT_LINES = [-60, -30, 0, 30, 60];
+const MAP_LNG_LINES = [-120, -60, 0, 60, 120];
 
 const formatGeoLabel = (value: string) =>
   value.trim().length === 0 || value === "unknown"
     ? "Unknown"
     : value;
+
+const clampNumber = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value));
+
+const projectGeoPoint = (latitude: number, longitude: number) => {
+  const x = ((longitude + 180) / 360) * MAP_WIDTH;
+  const y = ((90 - latitude) / 180) * MAP_HEIGHT;
+  return { x, y };
+};
 
 const formatVisitors = (count: number) =>
   `${count.toLocaleString()} visitor${count === 1 ? "" : "s"}`;
@@ -163,6 +156,38 @@ export default function Dashboard({ siteId }: { siteId?: string }) {
         .slice(0, 6),
     [geoCounts.city],
   );
+  const geoPoints = useMemo(() => {
+    const points = activeRollupQuery.data?.geoPoints ?? [];
+    const buckets = new Map<string, { lat: number; lng: number; count: number }>();
+    for (const point of points) {
+      if (typeof point.latitude !== "number" || typeof point.longitude !== "number") {
+        continue;
+      }
+      if (!Number.isFinite(point.latitude) || !Number.isFinite(point.longitude)) {
+        continue;
+      }
+      const roundedLat = Math.round(point.latitude);
+      const roundedLng = Math.round(point.longitude);
+      const key = `${roundedLat}:${roundedLng}`;
+      const existing = buckets.get(key);
+      if (existing) {
+        existing.count += 1;
+        continue;
+      }
+      buckets.set(key, { lat: roundedLat, lng: roundedLng, count: 1 });
+    }
+    return Array.from(buckets.values());
+  }, [activeRollupQuery.data?.geoPoints]);
+  const geoDots = useMemo(() => {
+    const maxCount = geoPoints.reduce((max, point) => Math.max(max, point.count), 0);
+    return geoPoints.map((point) => {
+      const lat = clampNumber(point.lat, -90, 90);
+      const lng = clampNumber(point.lng, -180, 180);
+      const { x, y } = projectGeoPoint(lat, lng);
+      const size = maxCount ? Math.round(2 + (point.count / maxCount) * 6) : 2;
+      return { ...point, x, y, size };
+    });
+  }, [geoPoints]);
 
   const revenueTotals = useMemo(() => {
     const totals = { total: 0, new: 0, renewal: 0, refund: 0 };
@@ -304,28 +329,7 @@ export default function Dashboard({ siteId }: { siteId?: string }) {
 
     const activeGeoEntries = activeGeoTab === "region" ? topRegions : topCities;
     const activeGeoTotal = activeGeoEntries.reduce((sum, [, count]) => sum + count, 0);
-    const maxCountryCount = topCountries.reduce(
-      (max, [, count]) => Math.max(max, count),
-      0,
-    );
-    const geoPins = topCountries
-      .map(([label, count]) => {
-        const key = label.trim().toUpperCase();
-        const coords = geoPinPositions[key];
-        if (!coords) {
-          return null;
-        }
-        const size = maxCountryCount
-          ? Math.round(4 + (count / maxCountryCount) * 6)
-          : 4;
-        return { label, count, size, ...coords };
-      })
-      .filter(
-        (
-          pin,
-        ): pin is { label: string; count: number; size: number; x: number; y: number } =>
-          Boolean(pin),
-      );
+    const hasGeoData = geoDots.length > 0 || topCountries.length > 0;
 
     return (
       <div className="flex flex-col gap-6">
@@ -486,45 +490,89 @@ export default function Dashboard({ siteId }: { siteId?: string }) {
               <CardDescription>Top countries based on recent traffic.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              {topCountries.length === 0 ? (
+              {!hasGeoData ? (
                 <p className="text-sm text-muted-foreground">
                   No geo data yet. Collect more visits to see the map.
                 </p>
               ) : (
                 <>
                   <div className="relative h-64 w-full overflow-hidden rounded-md border bg-muted/20">
-                    <svg viewBox="0 0 800 420" className="h-full w-full">
-                      <rect x="0" y="0" width="800" height="420" rx="24" fill="hsl(var(--muted))" opacity="0.35" />
-                      {worldMapPaths.map((path, index) => (
-                        <path
-                          key={`${path}-${index}`}
-                          d={path}
-                          fill="hsl(var(--muted))"
-                          opacity="0.8"
-                          stroke="hsl(var(--border))"
-                          strokeWidth="1"
-                        />
-                      ))}
-                      {geoPins.map((pin) => (
-                        <g key={pin.label}>
-                          <circle cx={pin.x} cy={pin.y} r={pin.size + 2} fill="hsl(var(--primary))" opacity="0.25" />
-                          <circle cx={pin.x} cy={pin.y} r={pin.size} fill="hsl(var(--primary))" />
-                          <title>
-                            {`${formatGeoLabel(pin.label)} · ${pin.count.toLocaleString()} visitors`}
-                          </title>
+                    <svg viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`} className="h-full w-full">
+                      <rect
+                        x="0"
+                        y="0"
+                        width={MAP_WIDTH}
+                        height={MAP_HEIGHT}
+                        rx="24"
+                        fill="hsl(var(--muted))"
+                        opacity="0.2"
+                      />
+                      {MAP_LAT_LINES.map((lat) => {
+                        const y = ((90 - lat) / 180) * MAP_HEIGHT;
+                        return (
+                          <line
+                            key={`lat-${lat}`}
+                            x1="0"
+                            y1={y}
+                            x2={MAP_WIDTH}
+                            y2={y}
+                            stroke="hsl(var(--border))"
+                            strokeWidth="1"
+                            opacity="0.5"
+                          />
+                        );
+                      })}
+                      {MAP_LNG_LINES.map((lng) => {
+                        const x = ((lng + 180) / 360) * MAP_WIDTH;
+                        return (
+                          <line
+                            key={`lng-${lng}`}
+                            x1={x}
+                            y1="0"
+                            x2={x}
+                            y2={MAP_HEIGHT}
+                            stroke="hsl(var(--border))"
+                            strokeWidth="1"
+                            opacity="0.5"
+                          />
+                        );
+                      })}
+                      {geoDots.map((dot, index) => (
+                        <g key={`${dot.lat}-${dot.lng}-${index}`}>
+                          <circle
+                            cx={dot.x}
+                            cy={dot.y}
+                            r={dot.size + 2}
+                            fill="hsl(var(--primary))"
+                            opacity="0.2"
+                          />
+                          <circle
+                            cx={dot.x}
+                            cy={dot.y}
+                            r={dot.size}
+                            fill="hsl(var(--primary))"
+                            opacity="0.7"
+                          />
+                          <title>{`${dot.count.toLocaleString()} visit${dot.count === 1 ? "" : "s"}`}</title>
                         </g>
                       ))}
                     </svg>
                   </div>
                   <div className="space-y-2 text-sm">
-                    {topCountries.map(([label, count]) => (
-                      <div key={label} className="flex items-center justify-between">
-                        <span className="text-muted-foreground">
-                          {formatGeoLabel(label)}
-                        </span>
-                        <span className="font-medium">{count.toLocaleString()}</span>
+                    {topCountries.length === 0 ? (
+                      <div className="text-sm text-muted-foreground">
+                        No country totals yet.
                       </div>
-                    ))}
+                    ) : (
+                      topCountries.map(([label, count]) => (
+                        <div key={label} className="flex items-center justify-between">
+                          <span className="text-muted-foreground">
+                            {formatGeoLabel(label)}
+                          </span>
+                          <span className="font-medium">{count.toLocaleString()}</span>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </>
               )}
