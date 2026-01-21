@@ -4,11 +4,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 
 import { buildApiKeyHeader, verifyApiKey } from "@my-better-t-app/api/api-key";
-import { db, rawEvent } from "@my-better-t-app/db";
+import { and, db, eq, rawEvent, sql } from "@my-better-t-app/db";
 import { env } from "@my-better-t-app/env/server";
 import { sanitizeMetadataRecord } from "@/lib/metadata-sanitize";
 import { runRetentionCleanup } from "@/lib/retention";
-import { extractDimensionRollups, metricsForEvent, upsertDimensionRollups, upsertRollups } from "@/lib/rollups";
+import {
+  extractDimensionRollups,
+  metricsForEvent,
+  metricsForSession,
+  upsertDimensionRollups,
+  upsertRollups,
+} from "@/lib/rollups";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
 const DEFAULT_MAX_PAYLOAD_BYTES = 32 * 1024;
@@ -505,6 +511,31 @@ export const POST = async (request: NextRequest) => {
   const eventId = payload.eventId ?? null;
   const timestamp = createdAt.getTime();
   const sessionId = payload.sessionId ?? payload.session_id ?? null;
+  const sessionEventTimestamp = createdAt.getTime();
+  let previousPageviews = 0;
+  let previousMaxTimestamp: number | null = null;
+
+  if (payload.type === "pageview" && sessionId) {
+    const [prior] = await db
+      .select({
+        count: sql<number>`count(*)`,
+        maxTimestamp: sql<number | null>`max(${rawEvent.timestamp})`,
+      })
+      .from(rawEvent)
+      .where(
+        and(
+          eq(rawEvent.siteId, authResult.siteId),
+          eq(rawEvent.sessionId, sessionId),
+          eq(rawEvent.visitorId, payload.visitorId),
+          eq(rawEvent.type, "pageview"),
+        ),
+      );
+    previousPageviews = Number(prior?.count ?? 0);
+    previousMaxTimestamp =
+      prior?.maxTimestamp !== null && prior?.maxTimestamp !== undefined
+        ? Number(prior.maxTimestamp)
+        : null;
+  }
 
   try {
     await db.insert(rawEvent).values({
@@ -530,13 +561,31 @@ export const POST = async (request: NextRequest) => {
   const metrics = metricsForEvent({
     type: payload.type,
     metadata: metadata && typeof metadata === "object" ? metadata : null,
-    sessionId,
   });
+  const sessionMetrics =
+    payload.type === "pageview" && sessionId
+      ? metricsForSession({
+          eventType: payload.type,
+          previousPageviews,
+          previousMaxTimestamp,
+          eventTimestamp: sessionEventTimestamp,
+        })
+      : metricsForSession({
+          eventType: "noop",
+          previousPageviews: 0,
+          previousMaxTimestamp: null,
+          eventTimestamp: sessionEventTimestamp,
+        });
 
   await upsertRollups({
     siteId: authResult.siteId,
     timestamp: createdAt,
     metrics,
+  });
+  await upsertRollups({
+    siteId: authResult.siteId,
+    timestamp: createdAt,
+    metrics: sessionMetrics,
   });
 
   await upsertDimensionRollups({

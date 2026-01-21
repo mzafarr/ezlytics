@@ -60,7 +60,8 @@ userStories:
       - Rollup job populates the new fields
       - Typecheck passes
     priority: 5
-    passes: false
+    completed: true
+    passes: true
     notes: ""
   - id: US-006
     title: Show bounce rate and session time in Overview KPIs

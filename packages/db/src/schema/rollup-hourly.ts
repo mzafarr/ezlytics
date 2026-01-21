@@ -14,6 +14,8 @@ export const rollupHourly = pgTable(
     hour: integer("hour").notNull(),
     visitors: integer("visitors").default(0).notNull(),
     sessions: integer("sessions").default(0).notNull(),
+    bouncedSessions: integer("bounced_sessions").default(0).notNull(),
+    avgSessionDurationMs: integer("avg_session_duration").default(0).notNull(),
     pageviews: integer("pageviews").default(0).notNull(),
     goals: integer("goals").default(0).notNull(),
     revenue: integer("revenue").default(0).notNull(),

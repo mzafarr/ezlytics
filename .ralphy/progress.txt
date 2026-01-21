@@ -13,3 +13,4 @@
 
 [2026-01-21T01:52:03.828Z] Marked US-001 as completed in tasks-2.yaml; lint passed (build failed: missing REVENUE_PROVIDER_KEY_SECRET).
 [2026-01-21T01:59:11.007Z] Completed US-004: computed session metrics (bounce + avg duration) in dashboard hook + KPI wiring; lint passed.
+[2026-01-21T02:20:34.226Z] Completed US-005: stored session metrics in rollups with migration and ingest rollup updates; lint passed.
