@@ -585,7 +585,7 @@ export const POST = async (request: NextRequest) => {
     );
   }
 
-  if (authResult.siteId !== payload.websiteId) {
+  if (authResult.websiteId !== payload.websiteId) {
     return withCors(
       NextResponse.json(
         { error: "API key does not match website id" },
