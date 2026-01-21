@@ -20,7 +20,8 @@ import {
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
 const DEFAULT_MAX_PAYLOAD_BYTES = 32 * 1024;
-const MAX_PAYLOAD_BYTES = env.INGEST_MAX_PAYLOAD_BYTES ?? DEFAULT_MAX_PAYLOAD_BYTES;
+const MAX_PAYLOAD_BYTES =
+  env.INGEST_MAX_PAYLOAD_BYTES ?? DEFAULT_MAX_PAYLOAD_BYTES;
 const MAX_STRING_LENGTH = 512;
 const MAX_METADATA_KEYS = 12;
 const MAX_METADATA_KEY_LENGTH = 64;
@@ -62,7 +63,12 @@ const timestampSchema = z.coerce.date();
 const tsSchema = z.number().int();
 const trackingValueSchema = z.string().trim().min(1).max(255);
 
-const metadataValueSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
+const metadataValueSchema = z.union([
+  z.string(),
+  z.number(),
+  z.boolean(),
+  z.null(),
+]);
 
 const metadataSchema = z
   .record(z.string(), metadataValueSchema)
@@ -124,7 +130,10 @@ const metadataSchema = z
         continue;
       }
       if (typeof rawValue === "string") {
-        const sanitized = rawValue.replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
+        const sanitized = rawValue
+          .replace(/<[^>]*>/g, "")
+          .replace(/\s+/g, " ")
+          .trim();
         if (!sanitized) {
           continue;
         }
@@ -217,9 +226,9 @@ const identifyMetadataSchema = metadataSchema.superRefine((value, ctx) => {
 const isUniqueViolation = (error: unknown) =>
   Boolean(
     error &&
-      typeof error === "object" &&
-      "code" in error &&
-      (error as { code?: string }).code === "23505",
+    typeof error === "object" &&
+    "code" in error &&
+    (error as { code?: string }).code === "23505",
   );
 
 const ALLOWLIST_DOCS = {
@@ -358,10 +367,16 @@ const normalizeGeoValue = (value: string | null) => {
   if (trimmed.toLowerCase() === "unknown") {
     return null;
   }
-  return trimmed.length > MAX_STRING_LENGTH ? trimmed.slice(0, MAX_STRING_LENGTH) : trimmed;
+  return trimmed.length > MAX_STRING_LENGTH
+    ? trimmed.slice(0, MAX_STRING_LENGTH)
+    : trimmed;
 };
 
-const clampCoordinate = (value: number | null | undefined, min: number, max: number) => {
+const clampCoordinate = (
+  value: number | null | undefined,
+  min: number,
+  max: number,
+) => {
   if (value == null || !Number.isFinite(value)) {
     return null;
   }
@@ -371,7 +386,8 @@ const clampCoordinate = (value: number | null | undefined, min: number, max: num
   return value;
 };
 
-let geoReaderPromise: Promise<maxmind.Reader<maxmind.CityResponse>> | null = null;
+let geoReaderPromise: Promise<maxmind.Reader<maxmind.CityResponse>> | null =
+  null;
 let geoReaderPath: string | null = null;
 
 const readGeoDatabase = (path: string) => {
@@ -411,11 +427,14 @@ const resolveGeoFromMaxMind = async (ip: string, mmdbPath: string) => {
     return null;
   }
   const region =
-    result.subdivisions?.[0]?.names?.en ?? result.subdivisions?.[0]?.names?.["en"];
+    result.subdivisions?.[0]?.names?.en ??
+    result.subdivisions?.[0]?.names?.["en"];
   return {
     country: normalizeCountry(result.country?.iso_code ?? null),
     region: normalizeGeoValue(region ?? null),
-    city: normalizeGeoValue(result.city?.names?.en ?? result.city?.names?.["en"] ?? null),
+    city: normalizeGeoValue(
+      result.city?.names?.en ?? result.city?.names?.["en"] ?? null,
+    ),
     latitude: clampCoordinate(result.location?.latitude, -90, 90),
     longitude: clampCoordinate(result.location?.longitude, -180, 180),
   };
@@ -455,6 +474,24 @@ const rateLimitResponse = (retryAfter: number) =>
       },
     },
   );
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Access-Control-Max-Age": "86400",
+};
+
+const withCors = (response: NextResponse) => {
+  for (const [key, value] of Object.entries(corsHeaders)) {
+    response.headers.set(key, value);
+  }
+  return response;
+};
+
+export const OPTIONS = () => {
+  return new NextResponse(null, { status: 204, headers: corsHeaders });
+};
 
 export const POST = async (request: NextRequest) => {
   const lengthHeader = request.headers.get("content-length");
@@ -523,17 +560,24 @@ export const POST = async (request: NextRequest) => {
   const payload = parsed.data;
   const headerAuth = request.headers.get("authorization");
   const queryKey = new URL(request.url).searchParams.get("api_key");
-  const authResult = await verifyApiKey(headerAuth || buildApiKeyHeader(queryKey));
+  const authResult = await verifyApiKey(
+    headerAuth || buildApiKeyHeader(queryKey),
+  );
   if (!authResult.ok) {
     return NextResponse.json({ error: authResult.error }, { status: 401 });
   }
 
   if (authResult.siteId !== payload.websiteId) {
-    return NextResponse.json({ error: "API key does not match website id" }, { status: 403 });
+    return NextResponse.json(
+      { error: "API key does not match website id" },
+      { status: 403 },
+    );
   }
 
   if (payload.type === "identify") {
-    const identifyValidation = identifyMetadataSchema.safeParse(payload.metadata ?? {});
+    const identifyValidation = identifyMetadataSchema.safeParse(
+      payload.metadata ?? {},
+    );
     if (!identifyValidation.success) {
       return NextResponse.json(
         {
@@ -556,11 +600,15 @@ export const POST = async (request: NextRequest) => {
 
   await runRetentionCleanup();
 
-  const { device, browser, os } = parseUserAgent(request.headers.get("user-agent"));
+  const { device, browser, os } = parseUserAgent(
+    request.headers.get("user-agent"),
+  );
   const ipAddress = getClientIp(request);
   const geoFromHeaders = {
     country: normalizeCountry(request.headers.get("x-vercel-ip-country")),
-    region: normalizeGeoValue(request.headers.get("x-vercel-ip-country-region")),
+    region: normalizeGeoValue(
+      request.headers.get("x-vercel-ip-country-region"),
+    ),
     city: normalizeGeoValue(request.headers.get("x-vercel-ip-city")),
   };
   const maxmindGeo =
@@ -589,8 +637,14 @@ export const POST = async (request: NextRequest) => {
     longitude,
   };
 
-  const createdAt = payload.ts !== undefined ? new Date(payload.ts) : payload.timestamp ?? new Date();
-  const metadata = sanitizeMetadataRecord(payload.metadata ?? null, MAX_METADATA_VALUE_LENGTH);
+  const createdAt =
+    payload.ts !== undefined
+      ? new Date(payload.ts)
+      : (payload.timestamp ?? new Date());
+  const metadata = sanitizeMetadataRecord(
+    payload.metadata ?? null,
+    MAX_METADATA_VALUE_LENGTH,
+  );
   const eventId = payload.eventId ?? null;
   const timestamp = createdAt.getTime();
   const sessionId = payload.sessionId ?? payload.session_id ?? null;
@@ -688,5 +742,5 @@ export const POST = async (request: NextRequest) => {
     }),
   });
 
-  return NextResponse.json({ ok: true });
+  return withCors(NextResponse.json({ ok: true }));
 };
