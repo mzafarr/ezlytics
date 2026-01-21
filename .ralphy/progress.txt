@@ -7,3 +7,4 @@
 
 [2026-01-21T00:54:33Z] Completed US-019: ordered visitor timeline by timestamp samples; lint passed.
 [2026-01-21T01:14:23.877Z] Completed US-001: added raw_event timestamp/session columns + indexes + migration; lint passed.
+[2026-01-21T01:33:01.199Z] Completed US-002: validated ts/session_id ingestion and allowlisted fields; lint passed (build failed: missing REVENUE_PROVIDER_KEY_SECRET).

@@ -23,7 +23,8 @@ userStories:
       - Invalid payloads return 4xx errors
       - Typecheck passes
     priority: 2
-    passes: false
+    completed: true
+    passes: true
     notes: ""
   - id: US-003
     title: Add timestamps and session IDs in the tracking script

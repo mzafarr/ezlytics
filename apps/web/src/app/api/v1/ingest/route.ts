@@ -17,6 +17,7 @@ const MAX_STRING_LENGTH = 512;
 const MAX_METADATA_KEYS = 12;
 const MAX_METADATA_KEY_LENGTH = 64;
 const MAX_METADATA_VALUE_LENGTH = 255;
+const MAX_FUTURE_EVENT_MS = 24 * 60 * 60 * 1000;
 
 const ALLOWED_TOP_LEVEL_KEYS = new Set([
   "v",
@@ -26,8 +27,10 @@ const ALLOWED_TOP_LEVEL_KEYS = new Set([
   "domain",
   "path",
   "referrer",
+  "ts",
   "timestamp",
   "visitorId",
+  "session_id",
   "sessionId",
   "eventId",
   "metadata",
@@ -48,6 +51,7 @@ const nameSchema = z.string().trim().min(1).max(64);
 const domainSchema = z.string().trim().min(1).max(255);
 const pathSchema = z.string().trim().min(1).max(1024);
 const timestampSchema = z.coerce.date();
+const tsSchema = z.number().int();
 const trackingValueSchema = z.string().trim().min(1).max(255);
 
 const metadataValueSchema = z.union([z.string(), z.number(), z.boolean(), z.null()]);
@@ -137,8 +141,10 @@ const payloadSchema = z
     domain: domainSchema,
     path: pathSchema,
     referrer: z.string().trim().max(1024).optional(),
+    ts: tsSchema.optional(),
     timestamp: timestampSchema.optional(),
     visitorId: idSchema,
+    session_id: idSchema.optional(),
     sessionId: idSchema.optional(),
     eventId: idSchema.optional(),
     metadata: metadataSchema,
@@ -174,6 +180,14 @@ const payloadSchema = z
         code: z.ZodIssueCode.custom,
         message: "Identify events require metadata.user_id",
         path: ["metadata", "user_id"],
+      });
+    }
+
+    if (value.ts !== undefined && value.ts > Date.now() + MAX_FUTURE_EVENT_MS) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "ts cannot be more than 24h in the future",
+        path: ["ts"],
       });
     }
   });
@@ -486,10 +500,11 @@ export const POST = async (request: NextRequest) => {
     city,
   };
 
-  const createdAt = payload.timestamp ?? new Date();
+  const createdAt = payload.ts !== undefined ? new Date(payload.ts) : payload.timestamp ?? new Date();
   const metadata = sanitizeMetadataRecord(payload.metadata ?? null, MAX_METADATA_VALUE_LENGTH);
   const eventId = payload.eventId ?? null;
   const timestamp = createdAt.getTime();
+  const sessionId = payload.sessionId ?? payload.session_id ?? null;
 
   try {
     await db.insert(rawEvent).values({
@@ -499,7 +514,7 @@ export const POST = async (request: NextRequest) => {
       type: payload.type,
       name: payload.name ?? null,
       visitorId: payload.visitorId,
-      sessionId: payload.sessionId ?? null,
+      sessionId,
       timestamp,
       metadata,
       normalized,
@@ -515,7 +530,7 @@ export const POST = async (request: NextRequest) => {
   const metrics = metricsForEvent({
     type: payload.type,
     metadata: metadata && typeof metadata === "object" ? metadata : null,
-    sessionId: payload.sessionId ?? null,
+    sessionId,
   });
 
   await upsertRollups({
