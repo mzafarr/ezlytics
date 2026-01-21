@@ -15,7 +15,13 @@ import {
   YAxis,
 } from "recharts";
 import { queryClient, trpc } from "@/utils/trpc";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -27,9 +33,7 @@ const MAP_LAT_LINES = [-60, -30, 0, 30, 60];
 const MAP_LNG_LINES = [-120, -60, 0, 60, 120];
 
 const formatGeoLabel = (value: string) =>
-  value.trim().length === 0 || value === "unknown"
-    ? "Unknown"
-    : value;
+  value.trim().length === 0 || value === "unknown" ? "Unknown" : value;
 
 const clampNumber = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value));
@@ -66,7 +70,15 @@ const toNumber = (value: unknown) => {
   return Number.isFinite(numeric) ? numeric : 0;
 };
 
-export default function Dashboard({ siteId }: { siteId?: string }) {
+export type DashboardView = "overview" | "settings" | "funnels";
+
+export default function Dashboard({
+  siteId,
+  view = "overview",
+}: {
+  siteId?: string;
+  view?: DashboardView;
+}) {
   const sitesQuery = useQuery(trpc.sites.list.queryOptions());
   const sites = sitesQuery.data ?? [];
   const siteIds = useMemo(() => sites.map((site) => site.id), [sites]);
@@ -79,22 +91,27 @@ export default function Dashboard({ siteId }: { siteId?: string }) {
       }
       const results = await Promise.all(
         siteIds.map((siteId) =>
-          queryClient.fetchQuery(trpc.analytics.rollups.queryOptions({ siteId })).then((rollup) => ({
-            siteId,
-            rollup,
-          })),
+          queryClient
+            .fetchQuery(trpc.analytics.rollups.queryOptions({ siteId }))
+            .then((rollup) => ({
+              siteId,
+              rollup,
+            })),
         ),
       );
-      return results.reduce<Record<string, RollupTotals>>((accumulator, entry) => {
-        const totals = entry.rollup.daily.reduce(
-          (summary, day) => ({
-            visitors: summary.visitors + day.visitors,
-          }),
-          { visitors: 0 },
-        );
-        accumulator[entry.siteId] = totals;
-        return accumulator;
-      }, {});
+      return results.reduce<Record<string, RollupTotals>>(
+        (accumulator, entry) => {
+          const totals = entry.rollup.daily.reduce(
+            (summary, day) => ({
+              visitors: summary.visitors + day.visitors,
+            }),
+            { visitors: 0 },
+          );
+          accumulator[entry.siteId] = totals;
+          return accumulator;
+        },
+        {},
+      );
     },
     enabled: siteIds.length > 0,
   });
@@ -119,7 +136,11 @@ export default function Dashboard({ siteId }: { siteId?: string }) {
     const dimensions = activeRollupQuery.data?.dimensions ?? [];
     for (const entry of dimensions) {
       const dimension = entry.dimension;
-      if (dimension !== "country" && dimension !== "region" && dimension !== "city") {
+      if (
+        dimension !== "country" &&
+        dimension !== "region" &&
+        dimension !== "city"
+      ) {
         continue;
       }
       const label = entry.dimensionValue.trim() || "unknown";
@@ -158,12 +179,21 @@ export default function Dashboard({ siteId }: { siteId?: string }) {
   );
   const geoPoints = useMemo(() => {
     const points = activeRollupQuery.data?.geoPoints ?? [];
-    const buckets = new Map<string, { lat: number; lng: number; count: number }>();
+    const buckets = new Map<
+      string,
+      { lat: number; lng: number; count: number }
+    >();
     for (const point of points) {
-      if (typeof point.latitude !== "number" || typeof point.longitude !== "number") {
+      if (
+        typeof point.latitude !== "number" ||
+        typeof point.longitude !== "number"
+      ) {
         continue;
       }
-      if (!Number.isFinite(point.latitude) || !Number.isFinite(point.longitude)) {
+      if (
+        !Number.isFinite(point.latitude) ||
+        !Number.isFinite(point.longitude)
+      ) {
         continue;
       }
       const roundedLat = Math.round(point.latitude);
@@ -179,7 +209,10 @@ export default function Dashboard({ siteId }: { siteId?: string }) {
     return Array.from(buckets.values());
   }, [activeRollupQuery.data?.geoPoints]);
   const geoDots = useMemo(() => {
-    const maxCount = geoPoints.reduce((max, point) => Math.max(max, point.count), 0);
+    const maxCount = geoPoints.reduce(
+      (max, point) => Math.max(max, point.count),
+      0,
+    );
     return geoPoints.map((point) => {
       const lat = clampNumber(point.lat, -90, 90);
       const lng = clampNumber(point.lng, -180, 180);
@@ -262,7 +295,9 @@ export default function Dashboard({ siteId }: { siteId?: string }) {
   const activeSite = siteId ? sites.find((site) => site.id === siteId) : null;
   const activeSiteTotals = siteId ? rollupQueries.data?.[siteId] : null;
   const hasEvents = (activeSiteTotals?.visitors ?? 0) > 0;
-  const showEmptyState = Boolean(siteId && activeSite && !isLoading && !hasEvents);
+  const showEmptyState = Boolean(
+    siteId && activeSite && !isLoading && !hasEvents,
+  );
 
   if (siteId) {
     if (isLoading || !activeSite) {
@@ -280,6 +315,68 @@ export default function Dashboard({ siteId }: { siteId?: string }) {
       );
     }
 
+    // Settings view - should render even with no events
+    if (view === "settings") {
+      return (
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Site Settings</CardTitle>
+              <CardDescription>
+                {activeSite.name} · {activeSite.domain}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-2">
+                <div className="text-sm font-medium">Installation Snippet</div>
+                <div className="relative rounded-md bg-muted p-4 font-mono text-xs">
+                  <pre className="overflow-x-auto">{`<script
+  defer
+  data-website-id="${activeSite.websiteId}"
+  data-domain="${activeSite.domain}"
+  data-api-key="${activeSite.apiKey}"
+  data-allow-localhost
+  src="/js/script.js"
+></script>`}</pre>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Add this snippet to the &lt;head&gt; of your website. For
+                  production, use your full domain URL for src.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <div className="text-sm font-medium">Site ID</div>
+                <div className="rounded-md bg-muted p-3 font-mono text-sm">
+                  {activeSite.id}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
+
+    // Funnels view - should render even with no events
+    if (view === "funnels") {
+      return (
+        <div className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Funnels</CardTitle>
+              <CardDescription>
+                {activeSite.name} · {activeSite.domain}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="text-sm text-muted-foreground">
+              <p>Create and view conversion funnels for your site.</p>
+              <p className="mt-4">Funnel analytics coming soon.</p>
+            </CardContent>
+          </Card>
+        </div>
+      );
+    }
+
+    // Empty state only applies to overview
     if (showEmptyState) {
       return (
         <div className="flex flex-col gap-6">
@@ -307,28 +404,29 @@ export default function Dashboard({ siteId }: { siteId?: string }) {
           </Card>
 
           <div className="grid gap-4 md:grid-cols-2">
-            {[
-              "Visitors",
-              "Revenue",
-              "Top pages",
-              "Goal conversions",
-            ].map((title) => (
-              <Card key={title}>
-                <CardHeader>
-                  <CardTitle>{title}</CardTitle>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">
-                  No data yet
-                </CardContent>
-              </Card>
-            ))}
+            {["Visitors", "Revenue", "Top pages", "Goal conversions"].map(
+              (title) => (
+                <Card key={title}>
+                  <CardHeader>
+                    <CardTitle>{title}</CardTitle>
+                  </CardHeader>
+                  <CardContent className="text-sm text-muted-foreground">
+                    No data yet
+                  </CardContent>
+                </Card>
+              ),
+            )}
           </div>
         </div>
       );
     }
 
+    // Overview view (default)
     const activeGeoEntries = activeGeoTab === "region" ? topRegions : topCities;
-    const activeGeoTotal = activeGeoEntries.reduce((sum, [, count]) => sum + count, 0);
+    const activeGeoTotal = activeGeoEntries.reduce(
+      (sum, [, count]) => sum + count,
+      0,
+    );
     const hasGeoData = geoDots.length > 0 || topCountries.length > 0;
 
     return (
@@ -368,7 +466,9 @@ export default function Dashboard({ siteId }: { siteId?: string }) {
           <Card>
             <CardHeader>
               <CardTitle>Bounce rate</CardTitle>
-              <CardDescription>Sessions with a single pageview.</CardDescription>
+              <CardDescription>
+                Sessions with a single pageview.
+              </CardDescription>
             </CardHeader>
             <CardContent className="text-2xl font-semibold">
               {bounceRate.toFixed(1)}%
@@ -377,7 +477,9 @@ export default function Dashboard({ siteId }: { siteId?: string }) {
           <Card>
             <CardHeader>
               <CardTitle>Avg session</CardTitle>
-              <CardDescription>Average time between first and last pageview.</CardDescription>
+              <CardDescription>
+                Average time between first and last pageview.
+              </CardDescription>
             </CardHeader>
             <CardContent className="text-2xl font-semibold">
               {formatDuration(avgSessionDurationMs)}
@@ -487,7 +589,9 @@ export default function Dashboard({ siteId }: { siteId?: string }) {
           <Card>
             <CardHeader>
               <CardTitle>Geo distribution</CardTitle>
-              <CardDescription>Top countries based on recent traffic.</CardDescription>
+              <CardDescription>
+                Top countries based on recent traffic.
+              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {!hasGeoData ? (
@@ -497,7 +601,10 @@ export default function Dashboard({ siteId }: { siteId?: string }) {
               ) : (
                 <>
                   <div className="relative h-64 w-full overflow-hidden rounded-md border bg-muted/20">
-                    <svg viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`} className="h-full w-full">
+                    <svg
+                      viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`}
+                      className="h-full w-full"
+                    >
                       <rect
                         x="0"
                         y="0"
@@ -565,11 +672,16 @@ export default function Dashboard({ siteId }: { siteId?: string }) {
                       </div>
                     ) : (
                       topCountries.map(([label, count]) => (
-                        <div key={label} className="flex items-center justify-between">
+                        <div
+                          key={label}
+                          className="flex items-center justify-between"
+                        >
                           <span className="text-muted-foreground">
                             {formatGeoLabel(label)}
                           </span>
-                          <span className="font-medium">{count.toLocaleString()}</span>
+                          <span className="font-medium">
+                            {count.toLocaleString()}
+                          </span>
                         </div>
                       ))
                     )}
@@ -648,7 +760,10 @@ export default function Dashboard({ siteId }: { siteId?: string }) {
             Pick a site to view analytics and settings.
           </p>
         </div>
-        <Link href={"/dashboard/new" as Route} className={cn(buttonVariants({ size: "sm" }))}>
+        <Link
+          href={"/dashboard/new" as Route}
+          className={cn(buttonVariants({ size: "sm" }))}
+        >
           + Website
         </Link>
       </div>
@@ -668,7 +783,10 @@ export default function Dashboard({ siteId }: { siteId?: string }) {
             <p className="text-sm text-muted-foreground">
               Create your first website to start tracking analytics.
             </p>
-            <Link href={"/dashboard/new" as Route} className={cn(buttonVariants({ size: "sm" }))}>
+            <Link
+              href={"/dashboard/new" as Route}
+              className={cn(buttonVariants({ size: "sm" }))}
+            >
               Create a site
             </Link>
           </CardContent>
@@ -684,11 +802,17 @@ export default function Dashboard({ siteId }: { siteId?: string }) {
                   <CardTitle>{site.name}</CardTitle>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-4">
-                  <div className="text-sm text-muted-foreground">{site.domain}</div>
-                  <div className="text-base font-medium">{formatVisitors(visitors)}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {site.domain}
+                  </div>
+                  <div className="text-base font-medium">
+                    {formatVisitors(visitors)}
+                  </div>
                   <Link
                     href={`/dashboard/${site.id}` as Route}
-                    className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+                    className={cn(
+                      buttonVariants({ variant: "outline", size: "sm" }),
+                    )}
                   >
                     View dashboard
                   </Link>

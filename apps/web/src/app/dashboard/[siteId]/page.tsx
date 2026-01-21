@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import Dashboard from "../dashboard";
 
 type PageProps = {
-  params: { siteId: string };
+  params: Promise<{ siteId: string }>;
 };
 
 export default async function SiteDashboardPage({ params }: PageProps) {
@@ -17,5 +17,7 @@ export default async function SiteDashboardPage({ params }: PageProps) {
     redirect("/login");
   }
 
-  return <Dashboard siteId={params.siteId} />;
+  const { siteId } = await params;
+
+  return <Dashboard siteId={siteId} />;
 }
