@@ -465,14 +465,16 @@ const resolveVersion = (payload: Record<string, unknown>) => {
 };
 
 const rateLimitResponse = (retryAfter: number) =>
-  NextResponse.json(
-    { error: "Rate limit exceeded", retry_after: retryAfter },
-    {
-      status: 429,
-      headers: {
-        "Retry-After": retryAfter.toString(),
+  withCors(
+    NextResponse.json(
+      { error: "Rate limit exceeded", retry_after: retryAfter },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": retryAfter.toString(),
+        },
       },
-    },
+    ),
   );
 
 const corsHeaders = {
@@ -498,18 +500,22 @@ export const POST = async (request: NextRequest) => {
   if (lengthHeader) {
     const length = Number.parseInt(lengthHeader, 10);
     if (Number.isFinite(length) && length > MAX_PAYLOAD_BYTES) {
-      return NextResponse.json(
-        { error: "Payload too large", limit: MAX_PAYLOAD_BYTES },
-        { status: 413 },
+      return withCors(
+        NextResponse.json(
+          { error: "Payload too large", limit: MAX_PAYLOAD_BYTES },
+          { status: 413 },
+        ),
       );
     }
   }
 
   const bodyText = await request.text();
   if (Buffer.byteLength(bodyText) > MAX_PAYLOAD_BYTES) {
-    return NextResponse.json(
-      { error: "Payload too large", limit: MAX_PAYLOAD_BYTES },
-      { status: 413 },
+    return withCors(
+      NextResponse.json(
+        { error: "Payload too large", limit: MAX_PAYLOAD_BYTES },
+        { status: 413 },
+      ),
     );
   }
 
@@ -517,43 +523,53 @@ export const POST = async (request: NextRequest) => {
   try {
     body = bodyText ? JSON.parse(bodyText) : {};
   } catch (error) {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    return withCors(
+      NextResponse.json({ error: "Invalid JSON body" }, { status: 400 }),
+    );
   }
 
   if (!isRecord(body)) {
-    return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
+    return withCors(
+      NextResponse.json({ error: "Invalid payload" }, { status: 400 }),
+    );
   }
 
   const payloadValue = body;
   const invalidKey = ensureAllowlistedKeys(body);
   if (invalidKey) {
-    return NextResponse.json(
-      {
-        error: "Invalid request",
-        details: { [invalidKey]: ["Key is not allowlisted"] },
-        allowlist: ALLOWLIST_DOCS,
-      },
-      { status: 400 },
+    return withCors(
+      NextResponse.json(
+        {
+          error: "Invalid request",
+          details: { [invalidKey]: ["Key is not allowlisted"] },
+          allowlist: ALLOWLIST_DOCS,
+        },
+        { status: 400 },
+      ),
     );
   }
 
   const version = resolveVersion(body);
   if (version !== 1) {
-    return NextResponse.json(
-      { error: "Unsupported schema version", supported: [1] },
-      { status: 400 },
+    return withCors(
+      NextResponse.json(
+        { error: "Unsupported schema version", supported: [1] },
+        { status: 400 },
+      ),
     );
   }
 
   const parsed = payloadSchema.safeParse(payloadValue);
   if (!parsed.success) {
-    return NextResponse.json(
-      {
-        error: "Invalid request",
-        details: parsed.error.flatten().fieldErrors,
-        allowlist: ALLOWLIST_DOCS,
-      },
-      { status: 400 },
+    return withCors(
+      NextResponse.json(
+        {
+          error: "Invalid request",
+          details: parsed.error.flatten().fieldErrors,
+          allowlist: ALLOWLIST_DOCS,
+        },
+        { status: 400 },
+      ),
     );
   }
 
@@ -564,13 +580,17 @@ export const POST = async (request: NextRequest) => {
     headerAuth || buildApiKeyHeader(queryKey),
   );
   if (!authResult.ok) {
-    return NextResponse.json({ error: authResult.error }, { status: 401 });
+    return withCors(
+      NextResponse.json({ error: authResult.error }, { status: 401 }),
+    );
   }
 
   if (authResult.siteId !== payload.websiteId) {
-    return NextResponse.json(
-      { error: "API key does not match website id" },
-      { status: 403 },
+    return withCors(
+      NextResponse.json(
+        { error: "API key does not match website id" },
+        { status: 403 },
+      ),
     );
   }
 
@@ -579,13 +599,15 @@ export const POST = async (request: NextRequest) => {
       payload.metadata ?? {},
     );
     if (!identifyValidation.success) {
-      return NextResponse.json(
-        {
-          error: "Invalid request",
-          details: identifyValidation.error.flatten().fieldErrors,
-          allowlist: ALLOWLIST_DOCS,
-        },
-        { status: 400 },
+      return withCors(
+        NextResponse.json(
+          {
+            error: "Invalid request",
+            details: identifyValidation.error.flatten().fieldErrors,
+            allowlist: ALLOWLIST_DOCS,
+          },
+          { status: 400 },
+        ),
       );
     }
   }
@@ -695,7 +717,7 @@ export const POST = async (request: NextRequest) => {
     });
   } catch (error) {
     if (eventId && isUniqueViolation(error)) {
-      return NextResponse.json({ ok: true, deduped: true });
+      return withCors(NextResponse.json({ ok: true, deduped: true }));
     }
     throw error;
   }
