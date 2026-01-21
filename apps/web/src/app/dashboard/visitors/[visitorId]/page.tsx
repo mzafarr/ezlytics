@@ -22,7 +22,7 @@ export default async function VisitorPage({ params }: PageProps) {
   const { visitorId } = params;
   const visitorEvents = analyticsSamples.filter((event) => event.visitorId === visitorId);
   const sortedEvents = [...visitorEvents].sort(
-    (left, right) => new Date(left.date).getTime() - new Date(right.date).getTime(),
+    (left, right) => new Date(left.timestamp).getTime() - new Date(right.timestamp).getTime(),
   );
   const firstEvent = sortedEvents[0];
   const lastEvent = sortedEvents[sortedEvents.length - 1];
@@ -52,7 +52,7 @@ export default async function VisitorPage({ params }: PageProps) {
 
   const timelineByDay = sortedEvents.reduce<Record<string, typeof sortedEvents>>(
     (accumulator, event) => {
-      const key = event.date;
+      const key = event.timestamp.slice(0, 10);
       if (!accumulator[key]) {
         accumulator[key] = [];
       }
@@ -309,7 +309,7 @@ export default async function VisitorPage({ params }: PageProps) {
                         </div>
                         <div className="text-right text-[11px] text-muted-foreground">
                           <div>
-                            {new Date(`${event.date}T12:00:00`).toLocaleTimeString("en-US", {
+                            {new Date(event.timestamp).toLocaleTimeString("en-US", {
                               hour: "numeric",
                               minute: "2-digit",
                             })}

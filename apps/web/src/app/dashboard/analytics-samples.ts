@@ -1,5 +1,6 @@
 export type AnalyticsSample = {
   date: string;
+  timestamp: string;
   referrer: string;
   source: string;
   medium: string;
@@ -22,6 +23,7 @@ export type AnalyticsSample = {
 export const analyticsSamples: AnalyticsSample[] = [
   {
     date: "2026-01-16",
+    timestamp: "2026-01-16T09:12:00Z",
     referrer: "https://google.com",
     source: "google",
     medium: "cpc",
@@ -45,6 +47,7 @@ export const analyticsSamples: AnalyticsSample[] = [
   },
   {
     date: "2026-01-16",
+    timestamp: "2026-01-16T09:18:00Z",
     referrer: "https://google.com",
     source: "google",
     medium: "cpc",
@@ -68,6 +71,7 @@ export const analyticsSamples: AnalyticsSample[] = [
   },
   {
     date: "2026-01-17",
+    timestamp: "2026-01-17T15:04:00Z",
     referrer: "https://twitter.com",
     source: "twitter",
     medium: "social",
@@ -87,6 +91,7 @@ export const analyticsSamples: AnalyticsSample[] = [
   },
   {
     date: "2026-01-17",
+    timestamp: "2026-01-17T15:09:00Z",
     referrer: "https://twitter.com",
     source: "twitter",
     medium: "social",
@@ -106,6 +111,7 @@ export const analyticsSamples: AnalyticsSample[] = [
   },
   {
     date: "2026-01-18",
+    timestamp: "2026-01-18T10:40:00Z",
     referrer: "https://news.ycombinator.com",
     source: "hn",
     medium: "community",
@@ -129,6 +135,7 @@ export const analyticsSamples: AnalyticsSample[] = [
   },
   {
     date: "2026-01-18",
+    timestamp: "2026-01-18T10:22:00Z",
     referrer: "https://news.ycombinator.com",
     source: "hn",
     medium: "community",
@@ -148,6 +155,7 @@ export const analyticsSamples: AnalyticsSample[] = [
   },
   {
     date: "2026-01-19",
+    timestamp: "2026-01-19T08:05:00Z",
     referrer: "https://newsletter.example.com",
     source: "newsletter",
     medium: "email",
@@ -167,6 +175,7 @@ export const analyticsSamples: AnalyticsSample[] = [
   },
   {
     date: "2026-01-19",
+    timestamp: "2026-01-19T08:42:00Z",
     referrer: "https://newsletter.example.com",
     source: "newsletter",
     medium: "email",

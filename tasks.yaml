@@ -192,7 +192,7 @@ tasks:
       - "Typecheck passes"
 
   - title: "US-019: Order journey timeline by timestamps"
-    completed: false
+    completed: true
     parallel_group: 8
     description: "As a user, I want journeys ordered by real timestamps."
     acceptance_criteria:

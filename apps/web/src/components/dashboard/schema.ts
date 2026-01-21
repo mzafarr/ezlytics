@@ -121,6 +121,7 @@ export type DashboardView = "overview" | "funnels" | "settings";
 
 export type AnalyticsSample = {
   date: string;
+  timestamp: string;
   referrer: string;
   source: string;
   medium: string;
