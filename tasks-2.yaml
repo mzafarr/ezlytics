@@ -12,6 +12,7 @@ userStories:
       - Migration applied successfully
       - Typecheck passes
     priority: 1
+    completed: true
     passes: true
     notes: ""
   - id: US-002

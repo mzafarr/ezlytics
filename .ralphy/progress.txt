@@ -10,3 +10,5 @@
 [2026-01-21T01:33:01.199Z] Completed US-002: validated ts/session_id ingestion and allowlisted fields; lint passed (build failed: missing REVENUE_PROVIDER_KEY_SECRET).
 
 [2026-01-21T01:42:17.568Z] Completed US-003: added ts + session_id to tracking events with 30m session rotation; lint passed.
+
+[2026-01-21T01:52:03.828Z] Marked US-001 as completed in tasks-2.yaml; lint passed (build failed: missing REVENUE_PROVIDER_KEY_SECRET).
