@@ -48,7 +48,8 @@ userStories:
       - Session duration = last_event_ts - first_event_ts
       - Typecheck passes
     priority: 4
-    passes: false
+    completed: true
+    passes: true
     notes: ""
   - id: US-005
     title: Store session metrics in rollups

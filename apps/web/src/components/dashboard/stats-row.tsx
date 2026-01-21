@@ -6,6 +6,19 @@ import { Area, AreaChart, ResponsiveContainer } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
+const formatDuration = (durationMs: number) => {
+  if (!Number.isFinite(durationMs) || durationMs <= 0) {
+    return "0s";
+  }
+  const totalSeconds = Math.round(durationMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes > 0) {
+    return `${minutes}m ${seconds}s`;
+  }
+  return `${seconds}s`;
+};
+
 const data = [
   { value: 400 },
   { value: 300 },
@@ -124,7 +137,9 @@ export function StatsRow({ dashboardData, tooltips }: StatsRowProps) {
     totalRevenue,
     primaryConversionRate,
     revenuePerVisitor,
-    // Note: bounce rate and live visitors might not be in hook yet, using placeholders or computed if available
+    bounceRate,
+    avgSessionDurationMs,
+    // Note: live visitors might not be in hook yet, using placeholder
   } = dashboardData as any;
 
   return (
@@ -153,13 +168,17 @@ export function StatsRow({ dashboardData, tooltips }: StatsRowProps) {
         change="+0.0%"
         trend="up"
       />
-      <StatCard title="Bounce rate" value="0%" change="-0.0%" trend="down" />
       <StatCard
-        title="Visitors now"
-        value="0"
-        change=""
+        title="Bounce rate"
+        value={`${bounceRate?.toFixed(1) ?? "0.0"}%`}
+        change="+0.0%"
         trend="up"
-        showSparkline={false}
+      />
+      <StatCard
+        title="Avg session"
+        value={formatDuration(avgSessionDurationMs ?? 0)}
+        change="+0.0%"
+        trend="up"
       />
     </div>
   );

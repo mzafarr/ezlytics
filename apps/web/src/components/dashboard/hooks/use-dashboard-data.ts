@@ -35,6 +35,15 @@ const rollupDimensions = [
   "goal",
 ] as const;
 
+const resolveSessionKey = (event: AnalyticsSample) => {
+  const metadata = event.metadata ?? {};
+  const sessionId = metadata.session_id;
+  if (typeof sessionId === "string" && sessionId.trim().length > 0) {
+    return sessionId.trim();
+  }
+  return `${event.visitorId}-${event.date}`;
+};
+
 interface UseDashboardDataProps {
   filters: Filters;
   exclusions: {
@@ -342,6 +351,54 @@ export function useDashboardData({
   );
   const goals = filteredEvents.filter((event) => event.eventType === "goal");
 
+  const sessionMetrics = useMemo(() => {
+    const sessions = new Map<
+      string,
+      { pageviews: number; firstTimestamp: number; lastTimestamp: number }
+    >();
+    for (const event of pageviews) {
+      const sessionKey = resolveSessionKey(event);
+      const eventTimestamp = new Date(event.timestamp).getTime();
+      if (!Number.isFinite(eventTimestamp)) {
+        continue;
+      }
+      const existing = sessions.get(sessionKey);
+      if (!existing) {
+        sessions.set(sessionKey, {
+          pageviews: 1,
+          firstTimestamp: eventTimestamp,
+          lastTimestamp: eventTimestamp,
+        });
+        continue;
+      }
+      existing.pageviews += 1;
+      if (eventTimestamp < existing.firstTimestamp) {
+        existing.firstTimestamp = eventTimestamp;
+      }
+      if (eventTimestamp > existing.lastTimestamp) {
+        existing.lastTimestamp = eventTimestamp;
+      }
+    }
+    const sessionEntries = Array.from(sessions.values());
+    const totalSessions = sessionEntries.length;
+    const bouncedSessions = sessionEntries.filter(
+      (session) => session.pageviews === 1,
+    ).length;
+    const totalDurationMs = sessionEntries.reduce((sum, session) => {
+      return sum + Math.max(0, session.lastTimestamp - session.firstTimestamp);
+    }, 0);
+    const avgSessionDurationMs =
+      totalSessions === 0 ? 0 : Math.round(totalDurationMs / totalSessions);
+    const bounceRate =
+      totalSessions === 0 ? 0 : (bouncedSessions / totalSessions) * 100;
+    return {
+      totalSessions,
+      bouncedSessions,
+      avgSessionDurationMs,
+      bounceRate,
+    };
+  }, [pageviews]);
+
   const visitorsById = useMemo(() => {
     return filteredEvents.reduce<Record<string, VisitorSummary>>(
       (accumulator, event) => {
@@ -409,11 +466,7 @@ export function useDashboardData({
   );
 
   // Aggregations
-  const sessionKeys = pageviews.reduce((accumulator, event) => {
-    accumulator.add(`${event.visitorId}-${event.date}`);
-    return accumulator;
-  }, new Set<string>());
-  const sessionCount = sessionKeys.size;
+  const sessionCount = sessionMetrics.totalSessions;
   const totalRevenue = useRollups
     ? rollupSummary.totals.revenue
     : filteredEvents.reduce((sum, event) => sum + event.revenue, 0);
@@ -588,6 +641,8 @@ export function useDashboardData({
     visitorsCount,
     sessionTotal,
     pageviewTotal,
+    bounceRate: sessionMetrics.bounceRate,
+    avgSessionDurationMs: sessionMetrics.avgSessionDurationMs,
     totalRevenue,
     revenuePerVisitor,
     goalSummaries,
