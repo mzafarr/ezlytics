@@ -19,6 +19,8 @@ export type AnalyticsSample = {
   goal: string;
   revenue: number;
   eventType: "pageview" | "goal";
+  latitude?: number;
+  longitude?: number;
   metadata?: Record<string, string | number | boolean | null>;
 };
 
@@ -44,6 +46,8 @@ export const analyticsSamples: AnalyticsSample[] = [
     goal: "signup",
     revenue: 0,
     eventType: "pageview",
+    latitude: 37.7749,
+    longitude: -122.4194,
     metadata: {
       session_id: "sess-1001",
       landing_variant: "hero-a",
@@ -70,6 +74,8 @@ export const analyticsSamples: AnalyticsSample[] = [
     goal: "signup",
     revenue: 120,
     eventType: "goal",
+    latitude: 37.7749,
+    longitude: -122.4194,
     metadata: {
       signup_method: "google",
       seats: 3,
@@ -96,6 +102,8 @@ export const analyticsSamples: AnalyticsSample[] = [
     goal: "",
     revenue: 0,
     eventType: "pageview",
+    latitude: 51.5074,
+    longitude: -0.1278,
   },
   {
     date: "2026-01-17",
@@ -118,6 +126,8 @@ export const analyticsSamples: AnalyticsSample[] = [
     goal: "",
     revenue: 0,
     eventType: "pageview",
+    latitude: 51.5074,
+    longitude: -0.1278,
   },
   {
     date: "2026-01-18",
@@ -140,6 +150,8 @@ export const analyticsSamples: AnalyticsSample[] = [
     goal: "demo_request",
     revenue: 0,
     eventType: "goal",
+    latitude: 52.52,
+    longitude: 13.405,
     metadata: {
       demo_type: "enterprise",
       score: 87,
@@ -166,6 +178,8 @@ export const analyticsSamples: AnalyticsSample[] = [
     goal: "",
     revenue: 0,
     eventType: "pageview",
+    latitude: 52.52,
+    longitude: 13.405,
   },
   {
     date: "2026-01-19",
@@ -188,6 +202,8 @@ export const analyticsSamples: AnalyticsSample[] = [
     goal: "",
     revenue: 0,
     eventType: "pageview",
+    latitude: 43.6532,
+    longitude: -79.3832,
   },
   {
     date: "2026-01-19",
@@ -210,6 +226,8 @@ export const analyticsSamples: AnalyticsSample[] = [
     goal: "purchase",
     revenue: 240,
     eventType: "goal",
+    latitude: 43.6532,
+    longitude: -79.3832,
     metadata: {
       plan: "pro",
       coupon: "jan-recap",
