@@ -16,3 +16,12 @@
 [2026-01-21T02:20:34.226Z] Completed US-005: stored session metrics in rollups with migration and ingest rollup updates; lint passed.
 
 [2026-01-21T03:21:49.518Z] Completed US-006: added bounce rate + avg session KPI cards to overview; lint passed.
+- [✓] 2026-01-21 08:48 - Show bounce rate and session time in Overview KPIs
+- [✓] 2026-01-21 09:08 - Show bounce rate and session time in Overview KPIs
+- [✓] 2026-01-21 09:29 - Compute Visitors Now (last 5 minutes)
+- [✓] 2026-01-21 09:49 - Display Visitors Now in Overview KPIs
+- [✓] 2026-01-21 10:08 - Add geo fields to events schema
+- [✓] 2026-01-21 10:40 - Resolve geo data on ingestion
+- [✓] 2026-01-21 11:12 - Include geo dimensions in rollups
+- [✓] 2026-01-21 11:19 - Replace geo placeholders with map and region/city 
+- [✓] 2026-01-21 13:33 - Replace geo placeholders with map and region/city 

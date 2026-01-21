@@ -73,8 +73,7 @@ userStories:
       - Verify in browser using dev-browser skill
       - Typecheck passes
     priority: 6
-    completed: true
-    passes: false
+    passes: true
     notes: ""
   - id: US-007
     title: Compute Visitors Now (last 5 minutes)
@@ -85,7 +84,7 @@ userStories:
       - Updates on refresh (no live push required)
       - Typecheck passes
     priority: 7
-    passes: false
+    passes: true
     notes: ""
   - id: US-008
     title: Display Visitors Now in Overview KPIs
@@ -97,7 +96,7 @@ userStories:
       - Verify in browser using dev-browser skill
       - Typecheck passes
     priority: 8
-    passes: false
+    passes: true
     notes: ""
   - id: US-009
     title: Add geo fields to events schema
@@ -107,7 +106,7 @@ userStories:
       - Migration applied successfully
       - Typecheck passes
     priority: 9
-    passes: false
+    passes: true
     notes: ""
   - id: US-010
     title: Resolve geo data on ingestion
@@ -118,7 +117,7 @@ userStories:
       - Unknown geo values are stored as nulls
       - Typecheck passes
     priority: 10
-    passes: false
+    passes: true
     notes: ""
   - id: US-011
     title: Include geo dimensions in rollups
@@ -129,7 +128,7 @@ userStories:
       - Rollup job populates region/city aggregates
       - Typecheck passes
     priority: 11
-    passes: false
+    passes: true
     notes: ""
   - id: US-012
     title: Replace geo placeholders with map and region/city tabs
