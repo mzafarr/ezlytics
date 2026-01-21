@@ -101,6 +101,10 @@ export default function Dashboard({ siteId }: { siteId?: string }) {
     ...trpc.analytics.rollups.queryOptions({ siteId: siteId ?? "" }),
     enabled: Boolean(siteId),
   });
+  const visitorsNowQuery = useQuery({
+    ...trpc.analytics.visitorsNow.queryOptions({ siteId: siteId ?? "" }),
+    enabled: Boolean(siteId),
+  });
 
   const [activeGeoTab, setActiveGeoTab] = useState<"region" | "city">("region");
 
@@ -217,7 +221,10 @@ export default function Dashboard({ siteId }: { siteId?: string }) {
       : Math.round(sessionTotals.durationMs / sessionTotals.sessions);
 
   const isLoading =
-    sitesQuery.isLoading || rollupQueries.isLoading || activeRollupQuery.isLoading;
+    sitesQuery.isLoading ||
+    rollupQueries.isLoading ||
+    activeRollupQuery.isLoading ||
+    visitorsNowQuery.isLoading;
   const activeSite = siteId ? sites.find((site) => site.id === siteId) : null;
   const activeSiteTotals = siteId ? rollupQueries.data?.[siteId] : null;
   const hasEvents = (activeSiteTotals?.visitors ?? 0) > 0;
@@ -329,7 +336,22 @@ export default function Dashboard({ siteId }: { siteId?: string }) {
           </CardContent>
         </Card>
 
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-3">
+          <Card>
+            <CardHeader>
+              <CardTitle>Visitors now</CardTitle>
+              <CardDescription>Active in the last 5 minutes.</CardDescription>
+            </CardHeader>
+            <CardContent className="text-2xl font-semibold">
+              <span className="inline-flex items-center gap-2">
+                {visitorsNowQuery.data?.count?.toLocaleString() ?? "0"}
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500" />
+                </span>
+              </span>
+            </CardContent>
+          </Card>
           <Card>
             <CardHeader>
               <CardTitle>Bounce rate</CardTitle>
