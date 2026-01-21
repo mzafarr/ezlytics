@@ -25,3 +25,4 @@
 - [✓] 2026-01-21 11:12 - Include geo dimensions in rollups
 - [✓] 2026-01-21 11:19 - Replace geo placeholders with map and region/city 
 - [✓] 2026-01-21 13:33 - Replace geo placeholders with map and region/city 
+- [✓] 2026-01-21 13:38 - Replace geo placeholders with map and region/city 
