@@ -16,6 +16,7 @@ export type AnalyticsSample = {
   goal: string;
   revenue: number;
   eventType: "pageview" | "goal";
+  metadata?: Record<string, string | number | boolean | null>;
 };
 
 export const analyticsSamples: AnalyticsSample[] = [
@@ -37,6 +38,10 @@ export const analyticsSamples: AnalyticsSample[] = [
     goal: "signup",
     revenue: 0,
     eventType: "pageview",
+    metadata: {
+      session_id: "sess-1001",
+      landing_variant: "hero-a",
+    },
   },
   {
     date: "2026-01-16",
@@ -56,6 +61,10 @@ export const analyticsSamples: AnalyticsSample[] = [
     goal: "signup",
     revenue: 120,
     eventType: "goal",
+    metadata: {
+      signup_method: "google",
+      seats: 3,
+    },
   },
   {
     date: "2026-01-17",
@@ -113,6 +122,10 @@ export const analyticsSamples: AnalyticsSample[] = [
     goal: "demo_request",
     revenue: 0,
     eventType: "goal",
+    metadata: {
+      demo_type: "enterprise",
+      score: 87,
+    },
   },
   {
     date: "2026-01-18",
@@ -170,5 +183,9 @@ export const analyticsSamples: AnalyticsSample[] = [
     goal: "purchase",
     revenue: 240,
     eventType: "goal",
+    metadata: {
+      plan: "pro",
+      coupon: "jan-recap",
+    },
   },
 ];

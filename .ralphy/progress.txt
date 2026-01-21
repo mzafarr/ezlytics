@@ -3,3 +3,4 @@
 
 [2026-01-20T15:42:15.838Z] Completed US-016: added revenue split chart + refund totals on site dashboard; lint passed.
 [2026-01-20T16:26:01.457Z] Completed US-017: encrypt sensitive metadata fields at ingest via sanitizeMetadataRecord; lint passed.
+2026-01-21T00:49:20Z - Completed US-018: displayed metadata in visitor timeline with ordering/grouping and lint passed.

@@ -182,7 +182,7 @@ tasks:
       - "Typecheck passes"
 
   - title: "US-018: Display metadata in journey timeline"
-    completed: false
+    completed: true
     parallel_group: 8
     description: "As a user, I want to see event parameters in visitor journeys."
     acceptance_criteria:

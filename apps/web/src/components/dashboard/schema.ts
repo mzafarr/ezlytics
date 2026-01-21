@@ -137,6 +137,7 @@ export type AnalyticsSample = {
   goal: string;
   revenue: number;
   eventType: "pageview" | "goal";
+  metadata?: Record<string, string | number | boolean | null>;
 };
 
 export type VisitorSummary = {

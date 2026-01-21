@@ -22,10 +22,10 @@ export default async function VisitorPage({ params }: PageProps) {
   const { visitorId } = params;
   const visitorEvents = analyticsSamples.filter((event) => event.visitorId === visitorId);
   const sortedEvents = [...visitorEvents].sort(
-    (left, right) => new Date(right.date).getTime() - new Date(left.date).getTime(),
+    (left, right) => new Date(left.date).getTime() - new Date(right.date).getTime(),
   );
-  const firstEvent = sortedEvents[sortedEvents.length - 1];
-  const lastEvent = sortedEvents[0];
+  const firstEvent = sortedEvents[0];
+  const lastEvent = sortedEvents[sortedEvents.length - 1];
   const pageviews = visitorEvents.filter((event) => event.eventType === "pageview");
   const goals = visitorEvents.filter((event) => event.eventType === "goal");
   const visitedPages = pageviews.reduce<Record<string, number>>((accumulator, event) => {
@@ -43,6 +43,27 @@ export default async function VisitorPage({ params }: PageProps) {
   const totalRevenue = paymentEvents.reduce((sum, event) => sum + event.revenue, 0);
   const lastUrl = lastEvent ? `https://${lastEvent.hostname}${lastEvent.path}` : "—";
   const formatMoney = (value: number) => `$${value.toFixed(2)}`;
+
+  const formatEventLabel = (event: typeof sortedEvents[number]) =>
+    event.eventType === "goal" ? `Goal: ${event.goal || "unknown"}` : "Pageview";
+
+  const formatEventRoute = (event: typeof sortedEvents[number]) =>
+    event.path ? `${event.hostname}${event.path}` : event.hostname;
+
+  const timelineByDay = sortedEvents.reduce<Record<string, typeof sortedEvents>>(
+    (accumulator, event) => {
+      const key = event.date;
+      if (!accumulator[key]) {
+        accumulator[key] = [];
+      }
+      accumulator[key].push(event);
+      return accumulator;
+    },
+    {},
+  );
+  const orderedDays = Object.keys(timelineByDay).sort(
+    (left, right) => new Date(left).getTime() - new Date(right).getTime(),
+  );
 
   return (
     <div className="space-y-6">
@@ -245,21 +266,58 @@ export default async function VisitorPage({ params }: PageProps) {
               <CardTitle>Timeline</CardTitle>
               <CardDescription>Recent events for this visitor.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-2 text-xs">
-              {sortedEvents.map((event, index) => (
-                <div key={`${event.date}-${index}`} className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="space-y-1">
-                    <div className="font-medium">
-                      {event.eventType === "goal" ? `Goal: ${event.goal || "unknown"}` : "Pageview"}
-                    </div>
-                    <div className="text-[11px] text-muted-foreground">
-                      {event.hostname}
-                      {event.path}
-                    </div>
+            <CardContent className="space-y-4 text-xs">
+              {orderedDays.map((day) => (
+                <div key={day} className="space-y-2">
+                  <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                    {new Date(day).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    })}
                   </div>
-                  <div className="text-right text-[11px] text-muted-foreground">
-                    <div>{event.date}</div>
-                    {event.revenue > 0 ? <div>{formatMoney(event.revenue)}</div> : null}
+                  <div className="space-y-2">
+                    {timelineByDay[day].map((event, index) => (
+                      <div
+                        key={`${event.date}-${index}`}
+                        className="flex flex-wrap items-start justify-between gap-2 rounded-md border border-border/60 bg-muted/30 px-3 py-2"
+                      >
+                        <div className="space-y-2">
+                          <div className="font-medium">{formatEventLabel(event)}</div>
+                          <div className="text-[11px] text-muted-foreground">
+                            {formatEventRoute(event)}
+                          </div>
+                          {event.metadata && Object.keys(event.metadata).length > 0 ? (
+                            <details className="text-[11px] text-muted-foreground">
+                              <summary className="cursor-pointer text-foreground">
+                                View metadata
+                              </summary>
+                              <div className="mt-2 space-y-1">
+                                {Object.entries(event.metadata)
+                                  .sort(([left], [right]) => left.localeCompare(right))
+                                  .map(([key, value]) => (
+                                    <div key={key} className="flex items-start justify-between gap-4">
+                                      <span className="font-medium text-muted-foreground">{key}</span>
+                                      <span className="text-right text-foreground">
+                                        {value === null ? "—" : String(value)}
+                                      </span>
+                                    </div>
+                                  ))}
+                              </div>
+                            </details>
+                          ) : null}
+                        </div>
+                        <div className="text-right text-[11px] text-muted-foreground">
+                          <div>
+                            {new Date(`${event.date}T12:00:00`).toLocaleTimeString("en-US", {
+                              hour: "numeric",
+                              minute: "2-digit",
+                            })}
+                          </div>
+                          {event.revenue > 0 ? <div>{formatMoney(event.revenue)}</div> : null}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))}
