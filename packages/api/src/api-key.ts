@@ -18,6 +18,7 @@ type ApiKeySuccess = {
   apiKey: string;
   siteId: string;
   websiteId: string;
+  domain: string;
 };
 
 export type ApiKeyResult = ApiKeyFailure | ApiKeySuccess;
@@ -34,7 +35,7 @@ export const verifyApiKey = async (
   }
 
   const siteRecord = await db.query.site.findFirst({
-    columns: { id: true, websiteId: true },
+    columns: { id: true, websiteId: true, domain: true },
     where: (sites, { eq }) => eq(sites.apiKey, apiKey),
   });
 
@@ -47,5 +48,6 @@ export const verifyApiKey = async (
     apiKey,
     siteId: siteRecord.id,
     websiteId: siteRecord.websiteId,
+    domain: siteRecord.domain,
   };
 };

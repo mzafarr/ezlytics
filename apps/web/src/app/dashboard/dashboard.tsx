@@ -1,84 +1,45 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import Link from "next/link";
-import { type Route } from "next";
 import { useQuery } from "@tanstack/react-query";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Legend,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { FlaskConical } from "lucide-react";
+
+import { Button } from "@/components/ui/button";
 import { queryClient, trpc } from "@/utils/trpc";
+
+import { DashboardOverviewView } from "./_components/overview-view";
+import { DashboardSitesList } from "./_components/sites-list-view";
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-
-type RollupTotals = Record<string, number>;
-
-const MAP_WIDTH = 800;
-const MAP_HEIGHT = 420;
-const MAP_LAT_LINES = [-60, -30, 0, 30, 60];
-const MAP_LNG_LINES = [-120, -60, 0, 60, 120];
-
-const formatGeoLabel = (value: string) =>
-  value.trim().length === 0 || value === "unknown" ? "Unknown" : value;
-
-const clampNumber = (value: number, min: number, max: number) =>
-  Math.min(max, Math.max(min, value));
-
-const projectGeoPoint = (latitude: number, longitude: number) => {
-  const x = ((longitude + 180) / 360) * MAP_WIDTH;
-  const y = ((90 - latitude) / 180) * MAP_HEIGHT;
-  return { x, y };
-};
-
-const formatVisitors = (count: number) =>
-  `${count.toLocaleString()} visitor${count === 1 ? "" : "s"}`;
-
-const formatCurrency = (value: number) => `$${value.toLocaleString()}`;
-
-const formatRefund = (value: number) =>
-  value > 0 ? `-$${value.toLocaleString()}` : "$0";
-
-const formatDuration = (durationMs: number) => {
-  if (!Number.isFinite(durationMs) || durationMs <= 0) {
-    return "0s";
-  }
-  const totalSeconds = Math.round(durationMs / 1000);
-  const minutes = Math.floor(totalSeconds / 60);
-  const seconds = totalSeconds % 60;
-  if (minutes > 0) {
-    return `${minutes}m ${seconds}s`;
-  }
-  return `${seconds}s`;
-};
-
-const toNumber = (value: unknown) => {
-  const numeric = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(numeric) ? numeric : 0;
-};
+  DashboardEmptyState,
+  DashboardFunnelsView,
+  DashboardLoadingState,
+  DashboardSettingsView,
+} from "./_components/site-views";
+import { type RollupTotals } from "./dashboard-helpers";
+import {
+  TEST_CHART_DATA,
+  TEST_GEO_DOTS,
+  TEST_STATS_DATA,
+  TEST_TOP_REFERRERS,
+  TEST_TOP_SOURCES,
+  TEST_TOP_PAGES,
+  TEST_TOP_COUNTRIES,
+  TEST_TOP_DEVICES,
+  TEST_TOP_BROWSERS,
+} from "./test-data";
+import { useDashboardOverviewData } from "./use-dashboard-overview-data";
 
 export type DashboardView = "overview" | "settings" | "funnels";
+
+type DashboardProps = {
+  siteId?: string;
+  view?: DashboardView;
+};
 
 export default function Dashboard({
   siteId,
   view = "overview",
-}: {
-  siteId?: string;
-  view?: DashboardView;
-}) {
+}: DashboardProps) {
   const sitesQuery = useQuery(trpc.sites.list.queryOptions());
   const sites = sitesQuery.data ?? [];
   const siteIds = useMemo(() => sites.map((site) => site.id), [sites]);
@@ -125,167 +86,14 @@ export default function Dashboard({
     enabled: Boolean(siteId),
   });
 
-  const [activeGeoTab, setActiveGeoTab] = useState<"region" | "city">("region");
-
-  const geoCounts = useMemo(() => {
-    const base = {
-      country: {} as Record<string, number>,
-      region: {} as Record<string, number>,
-      city: {} as Record<string, number>,
-    };
-    const dimensions = activeRollupQuery.data?.dimensions ?? [];
-    for (const entry of dimensions) {
-      const dimension = entry.dimension;
-      if (
-        dimension !== "country" &&
-        dimension !== "region" &&
-        dimension !== "city"
-      ) {
-        continue;
-      }
-      const label = entry.dimensionValue.trim() || "unknown";
-      const count = entry.pageviews ?? 0;
-      if (dimension === "country") {
-        base.country[label] = (base.country[label] ?? 0) + count;
-      } else if (dimension === "region") {
-        base.region[label] = (base.region[label] ?? 0) + count;
-      } else {
-        base.city[label] = (base.city[label] ?? 0) + count;
-      }
-    }
-    return base;
-  }, [activeRollupQuery.data?.dimensions]);
-
-  const topCountries = useMemo(
-    () =>
-      Object.entries(geoCounts.country)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 5),
-    [geoCounts.country],
+  const [activeDeviceTab, setActiveDeviceTab] = useState<"device" | "browser">(
+    "device",
   );
-  const topRegions = useMemo(
-    () =>
-      Object.entries(geoCounts.region)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 6),
-    [geoCounts.region],
-  );
-  const topCities = useMemo(
-    () =>
-      Object.entries(geoCounts.city)
-        .sort((a, b) => b[1] - a[1])
-        .slice(0, 6),
-    [geoCounts.city],
-  );
-  const geoPoints = useMemo(() => {
-    const points = activeRollupQuery.data?.geoPoints ?? [];
-    const buckets = new Map<
-      string,
-      { lat: number; lng: number; count: number }
-    >();
-    for (const point of points) {
-      if (
-        typeof point.latitude !== "number" ||
-        typeof point.longitude !== "number"
-      ) {
-        continue;
-      }
-      if (
-        !Number.isFinite(point.latitude) ||
-        !Number.isFinite(point.longitude)
-      ) {
-        continue;
-      }
-      const roundedLat = Math.round(point.latitude);
-      const roundedLng = Math.round(point.longitude);
-      const key = `${roundedLat}:${roundedLng}`;
-      const existing = buckets.get(key);
-      if (existing) {
-        existing.count += 1;
-        continue;
-      }
-      buckets.set(key, { lat: roundedLat, lng: roundedLng, count: 1 });
-    }
-    return Array.from(buckets.values());
-  }, [activeRollupQuery.data?.geoPoints]);
-  const geoDots = useMemo(() => {
-    const maxCount = geoPoints.reduce(
-      (max, point) => Math.max(max, point.count),
-      0,
-    );
-    return geoPoints.map((point) => {
-      const lat = clampNumber(point.lat, -90, 90);
-      const lng = clampNumber(point.lng, -180, 180);
-      const { x, y } = projectGeoPoint(lat, lng);
-      const size = maxCount ? Math.round(2 + (point.count / maxCount) * 6) : 2;
-      return { ...point, x, y, size };
-    });
-  }, [geoPoints]);
+  const [showVisitorsSeries, setShowVisitorsSeries] = useState(true);
+  const [showRevenueSeries, setShowRevenueSeries] = useState(true);
+  const [useTestData, setUseTestData] = useState(false);
 
-  const revenueTotals = useMemo(() => {
-    const totals = { total: 0, new: 0, renewal: 0, refund: 0 };
-    for (const entry of activeRollupQuery.data?.daily ?? []) {
-      totals.total += toNumber(entry.revenue);
-      const byType = entry.revenueByType as
-        | { new?: number; renewal?: number; refund?: number }
-        | null
-        | undefined;
-      totals.new += toNumber(byType?.new);
-      totals.renewal += toNumber(byType?.renewal);
-      totals.refund += toNumber(byType?.refund);
-    }
-    return totals;
-  }, [activeRollupQuery.data?.daily]);
-
-  const revenueSeries = useMemo(() => {
-    return (activeRollupQuery.data?.daily ?? [])
-      .map((entry) => {
-        const rawDate = String(entry.date);
-        const dateValue = new Date(rawDate);
-        const dateLabel = Number.isNaN(dateValue.getTime())
-          ? rawDate
-          : dateValue.toLocaleDateString("en-US", {
-              month: "short",
-              day: "numeric",
-            });
-        const byType = entry.revenueByType as
-          | { new?: number; renewal?: number; refund?: number }
-          | null
-          | undefined;
-        const total = toNumber(entry.revenue);
-        const newValue = toNumber(byType?.new);
-        const renewalValue = toNumber(byType?.renewal);
-        const refundValue = toNumber(byType?.refund);
-        const hasSplit = newValue + renewalValue + refundValue > 0;
-        return {
-          date: rawDate,
-          dateLabel,
-          new: hasSplit ? newValue : total,
-          renewal: hasSplit ? renewalValue : 0,
-          refund: hasSplit ? refundValue : 0,
-        };
-      })
-      .sort((left, right) => left.date.localeCompare(right.date));
-  }, [activeRollupQuery.data?.daily]);
-
-  const hasRevenueData = revenueTotals.total > 0;
-  const sessionTotals = useMemo(() => {
-    const totals = { sessions: 0, bounced: 0, durationMs: 0 };
-    for (const entry of activeRollupQuery.data?.daily ?? []) {
-      totals.sessions += toNumber(entry.sessions);
-      totals.bounced += toNumber(entry.bouncedSessions);
-      totals.durationMs += toNumber(entry.avgSessionDurationMs);
-    }
-    return totals;
-  }, [activeRollupQuery.data?.daily]);
-  const bounceRate =
-    sessionTotals.sessions === 0
-      ? 0
-      : (sessionTotals.bounced / sessionTotals.sessions) * 100;
-  const avgSessionDurationMs =
-    sessionTotals.sessions === 0
-      ? 0
-      : Math.round(sessionTotals.durationMs / sessionTotals.sessions);
+  const overviewData = useDashboardOverviewData(activeRollupQuery.data);
 
   const isLoading =
     sitesQuery.isLoading ||
@@ -299,529 +107,126 @@ export default function Dashboard({
     siteId && activeSite && !isLoading && !hasEvents,
   );
 
+  // Test Data Button component
+  const TestDataButton = () => (
+    <div className="fixed bottom-4 right-4 z-50">
+      <Button
+        variant={useTestData ? "default" : "outline"}
+        size="sm"
+        onClick={() => setUseTestData((prev) => !prev)}
+        className={
+          useTestData ? "bg-amber-500 hover:bg-amber-600 text-black" : ""
+        }
+      >
+        <FlaskConical className="h-4 w-4 mr-2" />
+        {useTestData ? "Test Data ON" : "Test Data"}
+      </Button>
+    </div>
+  );
+
+  // When test mode is enabled, show test data immediately without any API calls
+  if (useTestData && siteId) {
+    return (
+      <>
+        <TestDataButton />
+        <DashboardOverviewView
+          statsData={TEST_STATS_DATA}
+          chartData={TEST_CHART_DATA}
+          topReferrers={TEST_TOP_REFERRERS}
+          topSources={TEST_TOP_SOURCES}
+          topPages={TEST_TOP_PAGES}
+          visibleCountries={TEST_TOP_COUNTRIES}
+          visibleDevices={TEST_TOP_DEVICES}
+          visibleBrowsers={TEST_TOP_BROWSERS}
+          geoDots={TEST_GEO_DOTS}
+          activeDeviceTab={activeDeviceTab}
+          onDeviceTabChange={(tab) => setActiveDeviceTab(tab)}
+          showVisitorsSeries={showVisitorsSeries}
+          showRevenueSeries={showRevenueSeries}
+          onToggleVisitors={() => setShowVisitorsSeries((current) => !current)}
+          onToggleRevenue={() => setShowRevenueSeries((current) => !current)}
+        />
+      </>
+    );
+  }
+
   if (siteId) {
     if (isLoading || !activeSite) {
       return (
-        <div className="flex flex-col gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Loading analytics...</CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">
-              Fetching site details and rollups.
-            </CardContent>
-          </Card>
-        </div>
+        <>
+          <TestDataButton />
+          <DashboardLoadingState />
+        </>
       );
     }
 
-    // Settings view - should render even with no events
     if (view === "settings") {
       return (
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Site Settings</CardTitle>
-              <CardDescription>
-                {activeSite.name} · {activeSite.domain}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="space-y-2">
-                <div className="text-sm font-medium">Installation Snippet</div>
-                <div className="relative rounded-md bg-muted p-4 font-mono text-xs">
-                  <pre className="overflow-x-auto">{`<script
-  defer
-  data-website-id="${activeSite.websiteId}"
-  data-domain="${activeSite.domain}"
-  data-api-key="${activeSite.apiKey}"
-  data-allow-localhost
-  src="/js/script.js"
-></script>`}</pre>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Add this snippet to the &lt;head&gt; of your website. For
-                  production, use your full domain URL for src.
-                </p>
-              </div>
-              <div className="space-y-2">
-                <div className="text-sm font-medium">Site ID</div>
-                <div className="rounded-md bg-muted p-3 font-mono text-sm">
-                  {activeSite.id}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+        <>
+          <TestDataButton />
+          <DashboardSettingsView site={activeSite} />
+        </>
       );
     }
 
-    // Funnels view - should render even with no events
     if (view === "funnels") {
       return (
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Funnels</CardTitle>
-              <CardDescription>
-                {activeSite.name} · {activeSite.domain}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="text-sm text-muted-foreground">
-              <p>Create and view conversion funnels for your site.</p>
-              <p className="mt-4">Funnel analytics coming soon.</p>
-            </CardContent>
-          </Card>
-        </div>
+        <>
+          <TestDataButton />
+          <DashboardFunnelsView site={activeSite} />
+        </>
       );
     }
 
-    // Empty state only applies to overview
     if (showEmptyState) {
       return (
-        <div className="flex flex-col gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Awaiting first event...</CardTitle>
-              <CardDescription>
-                {activeSite.name} · {activeSite.domain}
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4 text-sm text-muted-foreground">
-              <ol className="list-decimal space-y-1 pl-4">
-                <li>Install the tracking script from Settings.</li>
-                <li>Visit your site to trigger a pageview.</li>
-                <li>Refresh this dashboard after a minute.</li>
-                <li>Contact support if events still do not appear.</li>
-              </ol>
-              <Link
-                href={`/dashboard/${siteId}/settings` as Route}
-                className={cn(buttonVariants({ size: "sm" }))}
-              >
-                Install script
-              </Link>
-            </CardContent>
-          </Card>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            {["Visitors", "Revenue", "Top pages", "Goal conversions"].map(
-              (title) => (
-                <Card key={title}>
-                  <CardHeader>
-                    <CardTitle>{title}</CardTitle>
-                  </CardHeader>
-                  <CardContent className="text-sm text-muted-foreground">
-                    No data yet
-                  </CardContent>
-                </Card>
-              ),
-            )}
-          </div>
-        </div>
+        <>
+          <TestDataButton />
+          <DashboardEmptyState site={activeSite} siteId={siteId} />
+        </>
       );
     }
 
-    // Overview view (default)
-    const activeGeoEntries = activeGeoTab === "region" ? topRegions : topCities;
-    const activeGeoTotal = activeGeoEntries.reduce(
-      (sum, [, count]) => sum + count,
-      0,
-    );
-    const hasGeoData = geoDots.length > 0 || topCountries.length > 0;
+    const statsData = {
+      visitorsCount: overviewData.visitorsTotal,
+      visitorsNowCount: visitorsNowQuery.data?.count ?? 0,
+      totalRevenue: overviewData.revenueTotals.total,
+      primaryConversionRate: overviewData.conversionRate,
+      revenuePerVisitor: overviewData.revenuePerVisitor,
+      bounceRate: overviewData.bounceRate,
+      avgSessionDurationMs: overviewData.avgSessionDurationMs,
+      deltas: overviewData.metricDeltas ?? undefined,
+    };
 
     return (
-      <div className="flex flex-col gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>{activeSite?.name ?? "Site overview"}</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 text-sm text-muted-foreground">
-            {activeSite ? (
-              <div>
-                <div>Domain: {activeSite.domain}</div>
-                <div>Site ID: {activeSite.id}</div>
-              </div>
-            ) : (
-              <p>Loading site details...</p>
-            )}
-          </CardContent>
-        </Card>
-
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card>
-            <CardHeader>
-              <CardTitle>Visitors now</CardTitle>
-              <CardDescription>Active in the last 5 minutes.</CardDescription>
-            </CardHeader>
-            <CardContent className="text-2xl font-semibold">
-              <span className="inline-flex items-center gap-2">
-                {visitorsNowQuery.data?.count?.toLocaleString() ?? "0"}
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-blue-500" />
-                </span>
-              </span>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>Bounce rate</CardTitle>
-              <CardDescription>
-                Sessions with a single pageview.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="text-2xl font-semibold">
-              {bounceRate.toFixed(1)}%
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>Avg session</CardTitle>
-              <CardDescription>
-                Average time between first and last pageview.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="text-2xl font-semibold">
-              {formatDuration(avgSessionDurationMs)}
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
-          <Card>
-            <CardHeader>
-              <CardTitle>Revenue split</CardTitle>
-              <CardDescription>New vs renewal vs refunds.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              {hasRevenueData ? (
-                <div className="h-64 w-full">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={revenueSeries}>
-                      <CartesianGrid
-                        vertical={false}
-                        stroke="hsl(var(--border))"
-                        strokeDasharray="3 3"
-                        opacity={0.5}
-                      />
-                      <XAxis
-                        dataKey="dateLabel"
-                        stroke="hsl(var(--muted-foreground))"
-                        fontSize={12}
-                        tickLine={false}
-                        axisLine={false}
-                      />
-                      <YAxis
-                        stroke="hsl(var(--muted-foreground))"
-                        fontSize={12}
-                        tickLine={false}
-                        axisLine={false}
-                        tickFormatter={(value) => `$${value}`}
-                      />
-                      <Tooltip
-                        formatter={(value) => formatCurrency(Number(value))}
-                      />
-                      <Legend />
-                      <Bar
-                        dataKey="new"
-                        stackId="revenue"
-                        fill="#f97316"
-                        name="New"
-                        radius={[4, 4, 0, 0]}
-                      />
-                      <Bar
-                        dataKey="renewal"
-                        stackId="revenue"
-                        fill="#3b82f6"
-                        name="Renewal"
-                      />
-                      <Bar
-                        dataKey="refund"
-                        stackId="revenue"
-                        fill="#ef4444"
-                        name="Refunds"
-                      />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  No revenue data yet.
-                </p>
-              )}
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>Revenue summary</CardTitle>
-              <CardDescription>Totals for the selected range.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Total</span>
-                <span className="font-medium">
-                  {formatCurrency(revenueTotals.total)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">New</span>
-                <span className="font-medium">
-                  {formatCurrency(revenueTotals.new)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Renewal</span>
-                <span className="font-medium">
-                  {formatCurrency(revenueTotals.renewal)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-muted-foreground">Refunds</span>
-                <span className="font-medium text-rose-500">
-                  {formatRefund(revenueTotals.refund)}
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="grid gap-6 lg:grid-cols-[2fr_1fr]">
-          <Card>
-            <CardHeader>
-              <CardTitle>Geo distribution</CardTitle>
-              <CardDescription>
-                Top countries based on recent traffic.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {!hasGeoData ? (
-                <p className="text-sm text-muted-foreground">
-                  No geo data yet. Collect more visits to see the map.
-                </p>
-              ) : (
-                <>
-                  <div className="relative h-64 w-full overflow-hidden rounded-md border bg-muted/20">
-                    <svg
-                      viewBox={`0 0 ${MAP_WIDTH} ${MAP_HEIGHT}`}
-                      className="h-full w-full"
-                    >
-                      <rect
-                        x="0"
-                        y="0"
-                        width={MAP_WIDTH}
-                        height={MAP_HEIGHT}
-                        rx="24"
-                        fill="hsl(var(--muted))"
-                        opacity="0.2"
-                      />
-                      {MAP_LAT_LINES.map((lat) => {
-                        const y = ((90 - lat) / 180) * MAP_HEIGHT;
-                        return (
-                          <line
-                            key={`lat-${lat}`}
-                            x1="0"
-                            y1={y}
-                            x2={MAP_WIDTH}
-                            y2={y}
-                            stroke="hsl(var(--border))"
-                            strokeWidth="1"
-                            opacity="0.5"
-                          />
-                        );
-                      })}
-                      {MAP_LNG_LINES.map((lng) => {
-                        const x = ((lng + 180) / 360) * MAP_WIDTH;
-                        return (
-                          <line
-                            key={`lng-${lng}`}
-                            x1={x}
-                            y1="0"
-                            x2={x}
-                            y2={MAP_HEIGHT}
-                            stroke="hsl(var(--border))"
-                            strokeWidth="1"
-                            opacity="0.5"
-                          />
-                        );
-                      })}
-                      {geoDots.map((dot, index) => (
-                        <g key={`${dot.lat}-${dot.lng}-${index}`}>
-                          <circle
-                            cx={dot.x}
-                            cy={dot.y}
-                            r={dot.size + 2}
-                            fill="hsl(var(--primary))"
-                            opacity="0.2"
-                          />
-                          <circle
-                            cx={dot.x}
-                            cy={dot.y}
-                            r={dot.size}
-                            fill="hsl(var(--primary))"
-                            opacity="0.7"
-                          />
-                          <title>{`${dot.count.toLocaleString()} visit${dot.count === 1 ? "" : "s"}`}</title>
-                        </g>
-                      ))}
-                    </svg>
-                  </div>
-                  <div className="space-y-2 text-sm">
-                    {topCountries.length === 0 ? (
-                      <div className="text-sm text-muted-foreground">
-                        No country totals yet.
-                      </div>
-                    ) : (
-                      topCountries.map(([label, count]) => (
-                        <div
-                          key={label}
-                          className="flex items-center justify-between"
-                        >
-                          <span className="text-muted-foreground">
-                            {formatGeoLabel(label)}
-                          </span>
-                          <span className="font-medium">
-                            {count.toLocaleString()}
-                          </span>
-                        </div>
-                      ))
-                    )}
-                  </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-2">
-              <div>
-                <CardTitle>Regions & cities</CardTitle>
-                <CardDescription>Ranked by pageviews.</CardDescription>
-              </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  variant={activeGeoTab === "region" ? "default" : "outline"}
-                  onClick={() => setActiveGeoTab("region")}
-                >
-                  Regions
-                </Button>
-                <Button
-                  size="sm"
-                  variant={activeGeoTab === "city" ? "default" : "outline"}
-                  onClick={() => setActiveGeoTab("city")}
-                >
-                  Cities
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-1">
-              {activeGeoEntries.length === 0 ? (
-                <div className="text-center py-8 text-sm text-muted-foreground">
-                  No data available
-                </div>
-              ) : (
-                activeGeoEntries.map(([label, count]) => {
-                  const percentage =
-                    activeGeoTotal === 0 ? 0 : (count / activeGeoTotal) * 100;
-                  return (
-                    <div
-                      key={label}
-                      className="relative group min-h-[32px] flex items-center"
-                    >
-                      <div
-                        className="absolute left-0 top-0 bottom-0 bg-primary/10 rounded-r-md transition-all duration-500"
-                        style={{ width: `${percentage}%` }}
-                      />
-                      <div className="relative z-10 flex items-center justify-between w-full px-2 py-1.5">
-                        <span className="text-sm text-foreground truncate font-medium">
-                          {formatGeoLabel(label)}
-                        </span>
-                        <span className="text-sm text-muted-foreground font-mono">
-                          {count.toLocaleString()}
-                        </span>
-                      </div>
-                      <div className="absolute inset-0 hover:bg-muted/40 transition-colors rounded-sm pointer-events-none" />
-                    </div>
-                  );
-                })
-              )}
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+      <>
+        <TestDataButton />
+        <DashboardOverviewView
+          statsData={statsData}
+          chartData={overviewData.chartData}
+          topReferrers={overviewData.topReferrers}
+          topSources={overviewData.topSources}
+          topPages={overviewData.topPages}
+          visibleCountries={overviewData.visibleCountries}
+          visibleDevices={overviewData.visibleDevices}
+          visibleBrowsers={overviewData.visibleBrowsers}
+          geoDots={overviewData.geoDots}
+          activeDeviceTab={activeDeviceTab}
+          onDeviceTabChange={(tab) => setActiveDeviceTab(tab)}
+          showVisitorsSeries={showVisitorsSeries}
+          showRevenueSeries={showRevenueSeries}
+          onToggleVisitors={() => setShowVisitorsSeries((current) => !current)}
+          onToggleRevenue={() => setShowRevenueSeries((current) => !current)}
+        />
+      </>
     );
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-6 py-10">
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Your sites</h1>
-          <p className="text-sm text-muted-foreground">
-            Pick a site to view analytics and settings.
-          </p>
-        </div>
-        <Link
-          href={"/dashboard/new" as Route}
-          className={cn(buttonVariants({ size: "sm" }))}
-        >
-          + Website
-        </Link>
-      </div>
-
-      {isLoading ? (
-        <Card>
-          <CardContent className="py-10 text-sm text-muted-foreground">
-            Loading sites...
-          </CardContent>
-        </Card>
-      ) : sites.length === 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>No sites yet</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <p className="text-sm text-muted-foreground">
-              Create your first website to start tracking analytics.
-            </p>
-            <Link
-              href={"/dashboard/new" as Route}
-              className={cn(buttonVariants({ size: "sm" }))}
-            >
-              Create a site
-            </Link>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
-          {sites.map((site) => {
-            const totals = rollupQueries.data?.[site.id];
-            const visitors = totals?.visitors ?? 0;
-            return (
-              <Card key={site.id}>
-                <CardHeader>
-                  <CardTitle>{site.name}</CardTitle>
-                </CardHeader>
-                <CardContent className="flex flex-col gap-4">
-                  <div className="text-sm text-muted-foreground">
-                    {site.domain}
-                  </div>
-                  <div className="text-base font-medium">
-                    {formatVisitors(visitors)}
-                  </div>
-                  <Link
-                    href={`/dashboard/${site.id}` as Route}
-                    className={cn(
-                      buttonVariants({ variant: "outline", size: "sm" }),
-                    )}
-                  >
-                    View dashboard
-                  </Link>
-                </CardContent>
-              </Card>
-            );
-          })}
-        </div>
-      )}
-    </div>
+    <DashboardSitesList
+      sites={sites}
+      rollupTotals={rollupQueries.data}
+      isLoading={isLoading}
+    />
   );
 }

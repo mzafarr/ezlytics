@@ -25,43 +25,45 @@ export default async function SiteDashboardLayout({ children, params }: LayoutPr
   const { siteId } = await params;
 
   return (
-    <div className="mx-auto w-full max-w-5xl px-6 py-8">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Site dashboard</h1>
-          <p className="text-sm text-muted-foreground">Site ID: {siteId}</p>
+    <div className="min-h-screen bg-background text-foreground">
+      <div className="mx-auto w-full max-w-6xl px-6 py-8">
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">Site dashboard</h1>
+            <p className="text-sm text-muted-foreground">Site ID: {siteId}</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <SiteSwitcher siteId={siteId} />
+            <Link
+              href={"/dashboard" as Route}
+              className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+            >
+              All sites
+            </Link>
+          </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <SiteSwitcher siteId={siteId} />
+        <div className="mb-6 flex flex-wrap gap-2">
           <Link
-            href={"/dashboard" as Route}
-            className={cn(buttonVariants({ variant: "outline", size: "sm" }))}
+            href={`/dashboard/${siteId}` as Route}
+            className={cn(buttonVariants({ variant: "secondary", size: "sm" }))}
           >
-            All sites
+            Overview
+          </Link>
+          <Link
+            href={`/dashboard/${siteId}/funnels` as Route}
+            className={cn(buttonVariants({ variant: "secondary", size: "sm" }))}
+          >
+            Funnels
+          </Link>
+          <Link
+            href={`/dashboard/${siteId}/settings` as Route}
+            className={cn(buttonVariants({ variant: "secondary", size: "sm" }))}
+          >
+            Settings
           </Link>
         </div>
+        {children}
       </div>
-      <div className="mb-6 flex flex-wrap gap-2">
-        <Link
-          href={`/dashboard/${siteId}` as Route}
-          className={cn(buttonVariants({ variant: "secondary", size: "sm" }))}
-        >
-          Overview
-        </Link>
-        <Link
-          href={`/dashboard/${siteId}/funnels` as Route}
-          className={cn(buttonVariants({ variant: "secondary", size: "sm" }))}
-        >
-          Funnels
-        </Link>
-        <Link
-          href={`/dashboard/${siteId}/settings` as Route}
-          className={cn(buttonVariants({ variant: "secondary", size: "sm" }))}
-        >
-          Settings
-        </Link>
-      </div>
-      {children}
     </div>
   );
 }

@@ -1,11 +1,13 @@
 import {
   db,
+  analyticsSession,
   rawEvent,
   rollupDaily,
   rollupDimensionDaily,
   rollupDimensionHourly,
   rollupHourly,
   sql,
+  visitorDaily,
 } from "@my-better-t-app/db";
 import { env } from "@my-better-t-app/env/server";
 
@@ -49,8 +51,13 @@ export const runRetentionCleanup = async () => {
   const rawEventCutoff = daysAgo(RAW_EVENT_RETENTION_DAYS);
   const rollupDailyCutoff = daysAgo(ROLLUP_DAILY_RETENTION_DAYS);
   const rollupHourlyCutoff = daysAgo(ROLLUP_HOURLY_RETENTION_DAYS);
+  const sessionCutoffTimestamp = rawEventCutoff.getTime();
 
   await db.delete(rawEvent).where(sql`${rawEvent.createdAt} < ${rawEventCutoff}`);
+  await db
+    .delete(analyticsSession)
+    .where(sql`${analyticsSession.lastTimestamp} < ${sessionCutoffTimestamp}`);
+  await db.delete(visitorDaily).where(sql`${visitorDaily.date} < ${rollupDailyCutoff}`);
   await db.delete(rollupDaily).where(sql`${rollupDaily.date} < ${rollupDailyCutoff}`);
   await db
     .delete(rollupDimensionDaily)

@@ -423,11 +423,14 @@ export function useDashboardData({
   const rollupBounceRate =
     rollupSessionTotals.sessions === 0
       ? 0
-      : (rollupSessionTotals.bouncedSessions / rollupSessionTotals.sessions) * 100;
+      : (rollupSessionTotals.bouncedSessions / rollupSessionTotals.sessions) *
+        100;
   const rollupAvgSessionDurationMs =
     rollupSessionTotals.sessions === 0
       ? 0
-      : Math.round(rollupSessionTotals.durationMs / rollupSessionTotals.sessions);
+      : Math.round(
+          rollupSessionTotals.durationMs / rollupSessionTotals.sessions,
+        );
 
   const visitorsById = useMemo(() => {
     return filteredEvents.reduce<Record<string, VisitorSummary>>(

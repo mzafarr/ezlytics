@@ -200,3 +200,31 @@ tasks:
       - "Timeline groups events by day with human-readable times"
       - "Verify in browser using dev-browser skill"
       - "Typecheck passes"
+
+  - title: "US-020: Harden ingest timestamps and domain allowlist"
+    completed: true
+    parallel_group: 9
+    description: "As an operator, I want server-trusted timestamps and domain allowlists to prevent bad data."
+    acceptance_criteria:
+      - "Ingest clamps client timestamps and uses server time when skewed"
+      - "API keys enforce site domain allowlist"
+      - "Typecheck passes"
+
+  - title: "US-021: Improve visitor/session accuracy and bot handling"
+    completed: true
+    parallel_group: 9
+    description: "As a user, I want accurate visitors/sessions and basic bot filtering."
+    acceptance_criteria:
+      - "Unique visitors tracked per day"
+      - "Session metrics derived from session table"
+      - "Bot user agents are excluded from rollups"
+      - "Typecheck passes"
+
+  - title: "US-022: Move retention cleanup off ingest path"
+    completed: true
+    parallel_group: 9
+    description: "As an operator, I want retention cleanup to run via cron instead of on every request."
+    acceptance_criteria:
+      - "Cron endpoint runs retention cleanup"
+      - "Ingest/webhooks no longer call cleanup"
+      - "Typecheck passes"

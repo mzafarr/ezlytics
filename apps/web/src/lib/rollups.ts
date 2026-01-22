@@ -141,7 +141,6 @@ export const metricsForEvent = ({
 
   if (type === "pageview") {
     metrics.pageviews = 1;
-    metrics.visitors = 1;
   } else if (type === "goal") {
     metrics.goals = 1;
   } else if (type === "payment") {
@@ -348,18 +347,24 @@ export const extractDimensionRollups = ({
         "not set",
       ),
     });
-    entries.push({
-      dimension: "country",
-      value: ensureDimensionValue(countryValue, "unknown", false),
-    });
-    entries.push({
-      dimension: "region",
-      value: ensureDimensionValue(regionValue, "unknown", false),
-    });
-    entries.push({
-      dimension: "city",
-      value: ensureDimensionValue(cityValue, "unknown", false),
-    });
+    if (countryValue) {
+      entries.push({
+        dimension: "country",
+        value: ensureDimensionValue(countryValue, "unknown", false),
+      });
+    }
+    if (regionValue) {
+      entries.push({
+        dimension: "region",
+        value: ensureDimensionValue(regionValue, "unknown", false),
+      });
+    }
+    if (cityValue) {
+      entries.push({
+        dimension: "city",
+        value: ensureDimensionValue(cityValue, "unknown", false),
+      });
+    }
     entries.push({
       dimension: "device",
       value: ensureDimensionValue(deviceValue, "unknown"),

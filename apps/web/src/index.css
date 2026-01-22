@@ -30,6 +30,7 @@
   --chart-3: oklch(0.588 0.0993 245.7394);
   --chart-4: oklch(0.7076 0.1975 46.4558);
   --chart-5: oklch(0.5656 0.0431 40.4319);
+  /* --chart-axis: #52525b; */
   --sidebar: oklch(0.7572 0 0);
   --sidebar-foreground: oklch(0.2393 0 0);
   --sidebar-primary: oklch(0.5016 0.1887 27.4816);
@@ -90,6 +91,7 @@
   --chart-3: oklch(0.7482 0.1235 244.7492);
   --chart-4: oklch(0.7839 0.1719 68.0943);
   --chart-5: oklch(0.6471 0.0334 40.7963);
+  --chart-axis: #a1a1aa;
   --sidebar: oklch(0.1913 0 0);
   --sidebar-foreground: oklch(0.9067 0 0);
   --sidebar-primary: oklch(0.6083 0.209 27.0276);
@@ -181,10 +183,10 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply font-sans bg-background text-foreground;
+    @apply font-sans bg-background text-foreground antialiased selection:bg-primary/20 selection:text-primary;
   }
   html {
-    @apply font-sans;
+    @apply font-sans scroll-smooth;
   }
   .maplibregl-popup-content {
     @apply bg-transparent! shadow-none! p-0! rounded-none!;

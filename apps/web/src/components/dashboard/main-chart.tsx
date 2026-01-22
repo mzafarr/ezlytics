@@ -10,31 +10,140 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { useTheme } from "next-themes";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
+
+type MainChartDatum = {
+  date: string;
+  dateLabel: string;
+  visitors: number;
+  revenue: number;
+  revenueNew?: number;
+  revenueRenewal?: number;
+  revenueRefund?: number;
+  revenuePerVisitor?: number;
+  conversionRate?: number;
+};
+
+const formatCurrency = (value: number) => `$${value.toLocaleString()}`;
+const visitorsColor = "var(--chart-2)";
+const revenueColor = "var(--chart-1)";
+const revenueRefundColor = "var(--chart-4)";
+
+// Custom shape for refund bar - transparent fill with dashed border (no bottom)
+const RefundBarShape = (props: any) => {
+  const { x, y, width, height } = props;
+  if (!height || height <= 0) return null;
+
+  const strokeW = 1;
+  const inset = strokeW / 2; // Inset to align stroke with bar edges
+  const r = 3; // corner radius
+
+  // Inset coordinates so stroke aligns with revenue bar
+  const ix = x + inset;
+  const iy = y + inset;
+  const iw = width - strokeW;
+  const ih = height - inset; // Only inset top, not bottom (it connects to bar)
+
+  // Draw path: left side up -> top-left curve -> top -> top-right curve -> right side down
+  // No bottom border
+  const path = `
+    M ${ix} ${iy + ih}
+    L ${ix} ${iy + r}
+    Q ${ix} ${iy} ${ix + r} ${iy}
+    L ${ix + iw - r} ${iy}
+    Q ${ix + iw} ${iy} ${ix + iw} ${iy + r}
+    L ${ix + iw} ${iy + ih}
+  `;
+
+  return (
+    <path
+      d={path}
+      fill="transparent"
+      stroke={revenueColor}
+      strokeWidth={strokeW}
+      strokeDasharray="4 3"
+      opacity={0.7}
+    />
+  );
+};
+
+// Custom shape for revenue bar - flat top when refund exists, rounded when no refund
+const RevenueBarShape = (props: any) => {
+  const { x, y, width, height, payload } = props;
+  if (!height || height <= 0) return null;
+
+  const hasRefund = payload?.revenueRefund && payload.revenueRefund > 0;
+  const r = hasRefund ? 0 : 4; // flat when refund exists, rounded otherwise
+
+  if (r === 0) {
+    // Flat rectangle
+    return (
+      <rect
+        x={x}
+        y={y}
+        width={width}
+        height={height}
+        fill={revenueColor}
+        opacity={0.85}
+      />
+    );
+  }
+
+  // Rounded top corners
+  const path = `
+    M ${x} ${y + height}
+    L ${x} ${y + r}
+    Q ${x} ${y} ${x + r} ${y}
+    L ${x + width - r} ${y}
+    Q ${x + width} ${y} ${x + width} ${y + r}
+    L ${x + width} ${y + height}
+    Z
+  `;
+
+  return <path d={path} fill={revenueColor} opacity={0.85} />;
+};
+
+const formatFullDate = (value: string) => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+  return parsed.toLocaleDateString("en-US", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+  });
+};
 
 // Mock data to match the screenshot vibe
-const data = Array.from({ length: 30 }, (_, i) => {
+const fallbackData: MainChartDatum[] = Array.from({ length: 30 }, (_, i) => {
   const date = new Date();
   date.setDate(date.getDate() - (29 - i));
   const day = date.getDate();
   const month = date.toLocaleString("default", { month: "short" });
 
-  // Random data generation
   const baseVisitors = 300 + Math.random() * 200;
-  // Spike around index 18
   const spike = i > 15 && i < 22 ? (22 - Math.abs(18 - i)) * 100 : 0;
   const visitors = Math.round(baseVisitors + spike);
+  const totalRevenue = Math.round(visitors * (1 + Math.random()) * 0.8);
+
+  // Refunds vary between 8-15% of revenue (visible dotted portion)
+  const refundRate = 0.08 + Math.random() * 0.07;
+  const revenueRefund = Math.round(totalRevenue * refundRate);
+  const revenueNew = totalRevenue - revenueRefund;
 
   return {
-    date: `${day} ${month}`,
-    fullDate: date.toLocaleDateString("en-GB", {
-      weekday: "long",
-      day: "numeric",
-      month: "long",
-    }),
+    date: date.toISOString().slice(0, 10),
+    dateLabel: `${day} ${month}`,
     visitors,
-    revenue: Math.round(visitors * (1 + Math.random()) * 0.8), // Correlated but distinct
+    revenue: totalRevenue,
+    revenueNew,
+    revenueRenewal: 0,
+    revenueRefund,
+    revenuePerVisitor: visitors ? totalRevenue / visitors : 0,
+    conversionRate: 0.7 + Math.random() * 0.4,
   };
 });
 
@@ -44,27 +153,37 @@ interface CustomTooltipProps {
   label?: string;
 }
 
-const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
+const CustomTooltip = ({ active, payload }: CustomTooltipProps) => {
   if (active && payload && payload.length) {
-    const visitorData = payload.find((p) => p.dataKey === "visitors");
-    const revenueData = payload.find((p) => p.dataKey === "revenue");
+    const datum = payload[0]?.payload as MainChartDatum | undefined;
+    const visitors = datum?.visitors ?? 0;
+    const revenue = datum?.revenue ?? 0;
+    const revenueNew = datum?.revenueNew ?? 0;
+    const revenueRefund = datum?.revenueRefund ?? 0;
+    const revenuePerVisitor =
+      datum?.revenuePerVisitor ?? (visitors ? revenue / visitors : 0);
+    const conversionRate = datum?.conversionRate ?? 0;
+    const hasSplit = revenueNew + revenueRefund > 0;
 
     return (
       <div className="bg-popover text-popover-foreground border border-border p-4 rounded-xl shadow-2xl min-w-[240px]">
         <p className="text-muted-foreground text-sm mb-3 font-medium">
-          {payload[0].payload.fullDate}
+          {datum?.date ? formatFullDate(datum.date) : "-"}
         </p>
 
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-[2px] bg-[#60A5FA]"></div>
+              <div
+                className="w-3 h-3 rounded-[2px]"
+                style={{ backgroundColor: visitorsColor }}
+              ></div>
               <span className="text-foreground font-medium text-sm">
                 Visitors
               </span>
             </div>
             <span className="text-foreground font-bold text-sm">
-              {visitorData?.value}
+              {visitors.toLocaleString()}
             </span>
           </div>
 
@@ -74,28 +193,56 @@ const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
                 Revenue
               </span>
               <span className="text-foreground font-bold text-sm">
-                ${revenueData?.value}
+                {formatCurrency(revenue)}
               </span>
             </div>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-[2px] bg-[#FB923C]"></div>
-                <span className="text-foreground font-medium text-sm">New</span>
+            {hasSplit ? (
+              <div className="space-y-1.5">
+                {revenueNew > 0 ? (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div
+                        className="w-3 h-3 rounded-[2px]"
+                        style={{ backgroundColor: revenueColor }}
+                      ></div>
+                      <span className="text-foreground font-medium text-sm">
+                        New
+                      </span>
+                    </div>
+                    <span className="text-foreground font-bold text-sm">
+                      {formatCurrency(revenueNew)}
+                    </span>
+                  </div>
+                ) : null}
+                {revenueRefund > 0 ? (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-[2px] border border-dashed border-foreground/50" />
+                      <span className="text-foreground font-medium text-sm">
+                        Refunds
+                      </span>
+                    </div>
+                    <span className="text-foreground font-bold text-sm">
+                      -{formatCurrency(revenueRefund)}
+                    </span>
+                  </div>
+                ) : null}
               </div>
-              <span className="text-foreground font-bold text-sm">
-                ${revenueData?.value}
-              </span>
-            </div>
+            ) : null}
           </div>
 
           <div className="pt-2 border-t border-border/60 space-y-1">
             <div className="flex justify-between text-xs">
               <span className="text-muted-foreground">Revenue/visitor</span>
-              <span className="text-foreground font-mono">$1.53</span>
+              <span className="text-foreground font-mono">
+                ${revenuePerVisitor.toFixed(2)}
+              </span>
             </div>
             <div className="flex justify-between text-xs">
               <span className="text-muted-foreground">Conversion rate</span>
-              <span className="text-foreground font-mono">0.72%</span>
+              <span className="text-foreground font-mono">
+                {conversionRate.toFixed(2)}%
+              </span>
             </div>
           </div>
         </div>
@@ -106,90 +253,172 @@ const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
   return null;
 };
 
-export function MainChart() {
+export function MainChart({
+  data,
+  showVisitors = true,
+  showRevenue = true,
+}: {
+  data?: MainChartDatum[];
+  showVisitors?: boolean;
+  showRevenue?: boolean;
+}) {
+  const { resolvedTheme } = useTheme();
+  const axisColor = resolvedTheme === "dark" ? "#a1a1aa" : "#52525b";
+
+  const hasExternalData = Array.isArray(data);
+  const chartData = hasExternalData ? data : fallbackData;
+  const isEmpty = hasExternalData && (!data || data.length === 0);
+  const hasSeries = showVisitors || showRevenue;
+
   return (
-    <Card className="col-span-4 bg-card border-border shadow-sm">
-      <CardHeader className="pb-2">
-        {/* Placeholder for Tabs/Controls if needed */}
-      </CardHeader>
+    <Card className="col-span-4 bg-card/90 border-border/60 shadow-sm rounded-2xl">
+      <CardHeader className="pb-2"></CardHeader>
       <CardContent className="pl-0">
-        <div className="h-[400px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <ComposedChart data={data}>
-              <defs>
-                <linearGradient id="colorVisitors" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
-                </linearGradient>
-                {/* Glow filter definition */}
-                <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-                  <feGaussianBlur stdDeviation="3" result="blur" />
-                  <feComposite in="SourceGraphic" in2="blur" operator="over" />
-                </filter>
-              </defs>
-              <CartesianGrid
-                vertical={false}
-                stroke="hsl(var(--border))"
-                strokeDasharray="3 3"
-                opacity={0.5}
-              />
-              <XAxis
-                dataKey="date"
-                stroke="hsl(var(--muted-foreground))"
-                fontSize={12}
-                tickLine={false}
-                axisLine={false}
-                dy={10}
-              />
-              <YAxis
-                yAxisId="left"
-                stroke="hsl(var(--muted-foreground))"
-                fontSize={12}
-                tickLine={false}
-                axisLine={false}
-                tickFormatter={(value) => `${value}`}
-              />
-              <YAxis
-                yAxisId="right"
-                orientation="right"
-                stroke="hsl(var(--muted-foreground))"
-                fontSize={12}
-                tickLine={false}
-                axisLine={false}
-                tickFormatter={(value) => `$${value}`}
-              />
-              <Tooltip
-                cursor={{
-                  stroke: "hsl(var(--border))",
-                  strokeWidth: 2,
-                }}
-                content={<CustomTooltip />}
-              />
+        {isEmpty ? (
+          <div className="flex h-[320px] w-full items-center justify-center text-sm text-muted-foreground">
+            No chart data yet.
+          </div>
+        ) : !hasSeries ? (
+          <div className="flex h-[320px] w-full items-center justify-center text-sm text-muted-foreground">
+            Toggle a series to show the chart.
+          </div>
+        ) : (
+          <div className="h-[400px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <ComposedChart data={chartData}>
+                <defs>
+                  <linearGradient
+                    id="colorVisitors"
+                    x1="0"
+                    y1="0"
+                    x2="0"
+                    y2="1"
+                  >
+                    <stop
+                      offset="5%"
+                      stopColor={visitorsColor}
+                      stopOpacity={0.35}
+                    />
+                    <stop
+                      offset="95%"
+                      stopColor={visitorsColor}
+                      stopOpacity={0}
+                    />
+                  </linearGradient>
+                  <pattern
+                    id="refundPattern"
+                    patternUnits="userSpaceOnUse"
+                    width="6"
+                    height="6"
+                  >
+                    {/* Sparse dot pattern to simulate dotted border effect */}
+                    <circle
+                      cx="1"
+                      cy="1"
+                      r="1"
+                      fill={revenueColor}
+                      opacity="0.6"
+                    />
+                  </pattern>
+                  <filter
+                    id="glow"
+                    x="-20%"
+                    y="-20%"
+                    width="140%"
+                    height="140%"
+                  >
+                    <feGaussianBlur stdDeviation="3" result="blur" />
+                    <feComposite
+                      in="SourceGraphic"
+                      in2="blur"
+                      operator="over"
+                    />
+                  </filter>
+                </defs>
+                <CartesianGrid
+                  vertical={false}
+                  stroke="hsl(var(--border))"
+                  strokeDasharray="3 3"
+                  opacity={0.5}
+                />
+                <XAxis
+                  dataKey="dateLabel"
+                  stroke={axisColor}
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fill: axisColor }}
+                  dy={10}
+                />
+                {showVisitors ? (
+                  <YAxis
+                    yAxisId="left"
+                    stroke={axisColor}
+                    fontSize={12}
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fill: axisColor }}
+                    tickFormatter={(value) => `${value}`}
+                  />
+                ) : null}
+                {showRevenue ? (
+                  <YAxis
+                    yAxisId="right"
+                    orientation="right"
+                    stroke={axisColor}
+                    fontSize={12}
+                    tickLine={false}
+                    axisLine={false}
+                    tick={{ fill: axisColor }}
+                    tickFormatter={(value) => `$${value}`}
+                  />
+                ) : null}
+                <Tooltip
+                  cursor={{
+                    stroke: "hsl(var(--border))",
+                    strokeWidth: 2,
+                  }}
+                  content={<CustomTooltip />}
+                />
 
-              {/* Revenue Bars - Background */}
-              <Bar
-                yAxisId="right"
-                dataKey="revenue"
-                fill="#ea580c" /* Orange-600 ish */
-                radius={[4, 4, 0, 0]}
-                barSize={24}
-                opacity={0.3}
-              />
+                {showRevenue ? (
+                  <Bar
+                    yAxisId="right"
+                    dataKey="revenueNew"
+                    stackId="revenue"
+                    shape={<RevenueBarShape />}
+                    barSize={20}
+                    minPointSize={3}
+                    name="Revenue"
+                  />
+                ) : null}
+                {showRevenue ? (
+                  <Bar
+                    yAxisId="right"
+                    dataKey="revenueRefund"
+                    stackId="revenue"
+                    shape={<RefundBarShape />}
+                    barSize={20}
+                    name="Refunds"
+                  />
+                ) : null}
 
-              {/* Visitors Area - Foreground with Glow */}
-              <Area
-                yAxisId="left"
-                type="monotone"
-                dataKey="visitors"
-                stroke="#60A5FA" /* Blue-400 */
-                strokeWidth={3}
-                fillOpacity={1}
-                fill="url(#colorVisitors)"
-                filter="drop-shadow(0 0 8px rgba(59, 130, 246, 0.5))"
-              />
-            </ComposedChart>
-          </ResponsiveContainer>
-        </div>
+                {showVisitors ? (
+                  <Area
+                    yAxisId="left"
+                    type="monotone"
+                    dataKey="visitors"
+                    stroke={visitorsColor}
+                    strokeWidth={3}
+                    fillOpacity={1}
+                    fill="url(#colorVisitors)"
+                    filter={`drop-shadow(0 0 8px ${visitorsColor})`}
+                  />
+                ) : null}
+              </ComposedChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

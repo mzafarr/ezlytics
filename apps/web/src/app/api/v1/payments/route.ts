@@ -6,7 +6,6 @@ import { z } from "zod";
 import { verifyApiKey } from "@my-better-t-app/api/api-key";
 import { db, payment, rawEvent } from "@my-better-t-app/db";
 import { sanitizeMetadataRecord } from "@/lib/metadata-sanitize";
-import { runRetentionCleanup } from "@/lib/retention";
 import { extractDimensionRollups, metricsForEvent, upsertDimensionRollups, upsertRollups } from "@/lib/rollups";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
@@ -98,8 +97,6 @@ export const POST = async (request: NextRequest) => {
   if (!rateLimit.ok) {
     return rateLimitResponse(rateLimit.retryAfter);
   }
-
-  await runRetentionCleanup();
 
   let body: unknown;
   try {

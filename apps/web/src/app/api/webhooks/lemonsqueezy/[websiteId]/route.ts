@@ -5,7 +5,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { and, db, eq, payment, rawEvent } from "@my-better-t-app/db";
 import { env } from "@my-better-t-app/env/server";
 import { sanitizeMetadataRecord } from "@/lib/metadata-sanitize";
-import { runRetentionCleanup } from "@/lib/retention";
 import { extractDimensionRollups, metricsForEvent, upsertDimensionRollups, upsertRollups } from "@/lib/rollups";
 
 const SUPPORTED_EVENTS = new Set(["order_created", "subscription_payment_success"]);
@@ -111,8 +110,6 @@ export const POST = async (
   if (!signatureHeader) {
     return NextResponse.json({ error: "LemonSqueezy signature header missing" }, { status: 400 });
   }
-
-  await runRetentionCleanup();
 
   const body = await request.text();
   if (!verifyLemonSqueezySignature(body, signatureHeader, webhookSecret)) {

@@ -1,7 +1,5 @@
 "use client";
 
-import { Globe, Layout, Smartphone } from "lucide-react";
-
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 
@@ -18,6 +16,7 @@ interface BreakdownCardProps {
   items: BreakdownItem[];
   icon?: React.ReactNode;
   className?: string;
+  metricLabel?: string;
 }
 
 export function BreakdownCard({
@@ -25,6 +24,7 @@ export function BreakdownCard({
   items,
   icon,
   className,
+  metricLabel = "Visitors",
 }: BreakdownCardProps) {
   return (
     <Card
@@ -41,7 +41,7 @@ export function BreakdownCard({
           </CardTitle>
         </div>
         <div className="flex gap-4 text-xs text-muted-foreground font-medium">
-          <span>Visitors</span>
+          <span>{metricLabel}</span>
           <span>↓</span>
         </div>
       </CardHeader>

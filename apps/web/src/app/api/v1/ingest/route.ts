@@ -6,17 +6,18 @@ import * as maxmind from "maxmind";
 import { z } from "zod";
 
 import { buildApiKeyHeader, verifyApiKey } from "@my-better-t-app/api/api-key";
-import { and, db, eq, rawEvent, sql } from "@my-better-t-app/db";
+import {
+  analyticsSession,
+  and,
+  db,
+  eq,
+  rawEvent,
+  sql,
+  visitorDaily,
+} from "@my-better-t-app/db";
 import { env } from "@my-better-t-app/env/server";
 import { sanitizeMetadataRecord } from "@/lib/metadata-sanitize";
-import { runRetentionCleanup } from "@/lib/retention";
-import {
-  extractDimensionRollups,
-  metricsForEvent,
-  metricsForSession,
-  upsertDimensionRollups,
-  upsertRollups,
-} from "@/lib/rollups";
+import { extractDimensionRollups, metricsForEvent, upsertDimensionRollups, upsertRollups } from "@/lib/rollups";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
 const DEFAULT_MAX_PAYLOAD_BYTES = 32 * 1024;
@@ -27,6 +28,7 @@ const MAX_METADATA_KEYS = 12;
 const MAX_METADATA_KEY_LENGTH = 64;
 const MAX_METADATA_VALUE_LENGTH = 255;
 const MAX_FUTURE_EVENT_MS = 24 * 60 * 60 * 1000;
+const MAX_CLIENT_TS_SKEW_MS = 5 * 60 * 1000;
 
 const ALLOWED_TOP_LEVEL_KEYS = new Set([
   "v",
@@ -248,6 +250,66 @@ const clampString = (value: string, maxLength = MAX_STRING_LENGTH) => {
   return trimmed.length > maxLength ? trimmed.slice(0, maxLength) : trimmed;
 };
 
+const normalizeDomain = (value: string) => {
+  const trimmed = clampString(value, 255).toLowerCase();
+  if (!trimmed) {
+    return "";
+  }
+  try {
+    const parsed = new URL(trimmed.startsWith("http") ? trimmed : `https://${trimmed}`);
+    return parsed.hostname.toLowerCase();
+  } catch (error) {
+    return trimmed.split("/")[0] || "";
+  }
+};
+
+const isDomainAllowed = (eventDomain: string, siteDomain: string) => {
+  if (!eventDomain || !siteDomain) {
+    return false;
+  }
+  if (eventDomain === siteDomain) {
+    return true;
+  }
+  return eventDomain.endsWith(`.${siteDomain}`);
+};
+
+const botSignatures = [
+  "bot",
+  "crawler",
+  "spider",
+  "crawling",
+  "headless",
+  "slurp",
+  "baiduspider",
+  "bingbot",
+  "duckduckbot",
+  "facebookexternalhit",
+  "facebot",
+  "ia_archiver",
+  "yandex",
+  "ahrefsbot",
+  "semrushbot",
+  "mj12bot",
+  "dotbot",
+  "petalbot",
+  "python-requests",
+  "curl",
+  "wget",
+  "postmanruntime",
+  "httpclient",
+  "axios",
+  "okhttp",
+  "go-http-client",
+];
+
+const isBotUserAgent = (value: string | null) => {
+  if (!value) {
+    return true;
+  }
+  const normalized = value.toLowerCase();
+  return botSignatures.some((signature) => normalized.includes(signature));
+};
+
 const normalizeUrl = (value: string) => {
   const trimmed = clampString(value, 2048);
   if (!trimmed) {
@@ -284,6 +346,117 @@ const normalizeTrackingValue = (value?: string) => {
     return "";
   }
   return clampString(value.toLowerCase(), 255);
+};
+
+const toBucketDate = (timestamp: Date) =>
+  new Date(Date.UTC(timestamp.getUTCFullYear(), timestamp.getUTCMonth(), timestamp.getUTCDate()))
+    .toISOString()
+    .slice(0, 10);
+
+const resolveEventTimestamp = (payload: { ts?: number; timestamp?: Date }) => {
+  const nowMs = Date.now();
+  const candidate =
+    typeof payload.ts === "number" && Number.isFinite(payload.ts)
+      ? payload.ts
+      : payload.timestamp && Number.isFinite(payload.timestamp.getTime())
+        ? payload.timestamp.getTime()
+        : null;
+  if (candidate === null) {
+    return {
+      eventDate: new Date(nowMs),
+      serverDate: new Date(nowMs),
+      clientTimestamp: null,
+      clockSkewMs: null,
+      usedClientTimestamp: false,
+    };
+  }
+  const skew = candidate - nowMs;
+  const withinSkew = Math.abs(skew) <= MAX_CLIENT_TS_SKEW_MS;
+  const eventDate = new Date(withinSkew ? candidate : nowMs);
+  return {
+    eventDate,
+    serverDate: new Date(nowMs),
+    clientTimestamp: candidate,
+    clockSkewMs: skew,
+    usedClientTimestamp: withinSkew,
+  };
+};
+
+const createEmptyMetrics = () => metricsForEvent({ type: "noop" });
+
+const buildSessionMetrics = async ({
+  siteId,
+  sessionId,
+  visitorId,
+  eventTimestamp,
+}: {
+  siteId: string;
+  sessionId: string;
+  visitorId: string;
+  eventTimestamp: number;
+}) => {
+  return db.transaction(async (tx) => {
+    const inserted = await tx
+      .insert(analyticsSession)
+      .values({
+        id: randomUUID(),
+        siteId,
+        sessionId,
+        visitorId,
+        firstTimestamp: eventTimestamp,
+        lastTimestamp: eventTimestamp,
+        pageviews: 1,
+      })
+      .onConflictDoNothing({
+        target: [analyticsSession.siteId, analyticsSession.sessionId, analyticsSession.visitorId],
+      })
+      .returning({ id: analyticsSession.id });
+
+    if (inserted.length > 0) {
+      const metrics = createEmptyMetrics();
+      metrics.sessions = 1;
+      metrics.bouncedSessions = 1;
+      return metrics;
+    }
+
+    const existing = await tx.execute(
+      sql`select pageviews, last_timestamp from analytics_session where site_id = ${siteId} and session_id = ${sessionId} and visitor_id = ${visitorId} for update`,
+    );
+    const row = existing.rows[0] as
+      | { pageviews: number; last_timestamp: number }
+      | undefined;
+    if (!row) {
+      return createEmptyMetrics();
+    }
+
+    const previousPageviews = Number(row.pageviews ?? 0);
+    const previousLastTimestamp = Number(row.last_timestamp ?? 0);
+    const nextLastTimestamp = Math.max(previousLastTimestamp, eventTimestamp);
+    const durationDelta = Math.max(0, nextLastTimestamp - previousLastTimestamp);
+
+    await tx
+      .update(analyticsSession)
+      .set({
+        pageviews: previousPageviews + 1,
+        lastTimestamp: nextLastTimestamp,
+      })
+      .where(
+        and(
+          eq(analyticsSession.siteId, siteId),
+          eq(analyticsSession.sessionId, sessionId),
+          eq(analyticsSession.visitorId, visitorId),
+        ),
+      );
+
+    const metrics = createEmptyMetrics();
+    if (previousPageviews === 1) {
+      metrics.bouncedSessions = -1;
+    }
+    if (durationDelta > 0) {
+      metrics.avgSessionDurationMs = durationDelta;
+    }
+    return metrics;
+  });
 };
 
 const normalizeTrackingValues = (payload: z.infer<typeof payloadSchema>) => {
@@ -354,6 +527,27 @@ const normalizeCountry = (value: string | null) => {
   }
   const upper = trimmed.toUpperCase();
   return upper.length > 2 ? upper.slice(0, 2) : upper;
+};
+
+const getHeaderValue = (headers: Headers, keys: string[]) => {
+  for (const key of keys) {
+    const value = headers.get(key);
+    if (value && value.trim().length > 0) {
+      return value.trim();
+    }
+  }
+  return null;
+};
+
+const parseCoordinateHeader = (value: string | null, min: number, max: number) => {
+  if (!value) {
+    return null;
+  }
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+  return clampCoordinate(parsed, min, max);
 };
 
 const normalizeGeoValue = (value: string | null) => {
@@ -594,6 +788,17 @@ export const POST = async (request: NextRequest) => {
     );
   }
 
+  const normalizedPayloadDomain = normalizeDomain(payload.domain);
+  const normalizedSiteDomain = normalizeDomain(authResult.domain);
+  if (!isDomainAllowed(normalizedPayloadDomain, normalizedSiteDomain)) {
+    return withCors(
+      NextResponse.json(
+        { error: "Domain not allowed for this site" },
+        { status: 403 },
+      ),
+    );
+  }
+
   if (payload.type === "identify") {
     const identifyValidation = identifyMetadataSchema.safeParse(
       payload.metadata ?? {},
@@ -620,18 +825,59 @@ export const POST = async (request: NextRequest) => {
     return rateLimitResponse(rateLimit.retryAfter);
   }
 
-  await runRetentionCleanup();
-
-  const { device, browser, os } = parseUserAgent(
-    request.headers.get("user-agent"),
-  );
+  const userAgent = request.headers.get("user-agent");
+  const { device, browser, os } = parseUserAgent(userAgent);
+  const isBot = isBotUserAgent(userAgent);
   const ipAddress = getClientIp(request);
+  const headerCountry = normalizeCountry(
+    getHeaderValue(request.headers, [
+      "x-vercel-ip-country",
+      "cf-ipcountry",
+      "x-country-code",
+      "x-geo-country",
+      "x-geo-country-code",
+    ]),
+  );
+  const headerRegion = normalizeGeoValue(
+    getHeaderValue(request.headers, [
+      "x-vercel-ip-country-region",
+      "x-vercel-ip-country-region-name",
+      "cf-region",
+      "x-geo-region",
+      "x-geo-region-name",
+    ]),
+  );
+  const headerCity = normalizeGeoValue(
+    getHeaderValue(request.headers, [
+      "x-vercel-ip-city",
+      "cf-city",
+      "x-geo-city",
+    ]),
+  );
+  const headerLatitude = parseCoordinateHeader(
+    getHeaderValue(request.headers, [
+      "x-vercel-ip-latitude",
+      "cf-iplatitude",
+      "x-geo-latitude",
+    ]),
+    -90,
+    90,
+  );
+  const headerLongitude = parseCoordinateHeader(
+    getHeaderValue(request.headers, [
+      "x-vercel-ip-longitude",
+      "cf-iplongitude",
+      "x-geo-longitude",
+    ]),
+    -180,
+    180,
+  );
   const geoFromHeaders = {
-    country: normalizeCountry(request.headers.get("x-vercel-ip-country")),
-    region: normalizeGeoValue(
-      request.headers.get("x-vercel-ip-country-region"),
-    ),
-    city: normalizeGeoValue(request.headers.get("x-vercel-ip-city")),
+    country: headerCountry,
+    region: headerRegion,
+    city: headerCity,
+    latitude: headerLatitude,
+    longitude: headerLongitude,
   };
   const maxmindGeo =
     env.GEOIP_MMDB_PATH && ipAddress
@@ -640,14 +886,15 @@ export const POST = async (request: NextRequest) => {
   const country = maxmindGeo?.country ?? geoFromHeaders.country ?? null;
   const region = maxmindGeo?.region ?? geoFromHeaders.region ?? null;
   const city = maxmindGeo?.city ?? geoFromHeaders.city ?? null;
-  const latitude = maxmindGeo?.latitude ?? null;
-  const longitude = maxmindGeo?.longitude ?? null;
+  const latitude = maxmindGeo?.latitude ?? geoFromHeaders.latitude ?? null;
+  const longitude = maxmindGeo?.longitude ?? geoFromHeaders.longitude ?? null;
 
+  const timestampInfo = resolveEventTimestamp(payload);
   const normalized = {
     url: normalizeUrl(payload.path),
     path: normalizeUrl(payload.path),
     referrer: payload.referrer ? normalizeReferrer(payload.referrer) : "",
-    domain: clampString(payload.domain, 255).toLowerCase(),
+    domain: normalizedPayloadDomain,
     utm: normalizeTrackingValues(payload),
     device,
     browser,
@@ -657,44 +904,26 @@ export const POST = async (request: NextRequest) => {
     city,
     latitude,
     longitude,
+    bot: isBot,
+    clientTimestamp: timestampInfo.clientTimestamp,
+    serverTimestamp: timestampInfo.serverDate.getTime(),
+    clockSkewMs: timestampInfo.clockSkewMs,
+    usedClientTimestamp: timestampInfo.usedClientTimestamp,
   };
 
-  const createdAt =
-    payload.ts !== undefined
-      ? new Date(payload.ts)
-      : (payload.timestamp ?? new Date());
+  const createdAt = timestampInfo.serverDate;
+  const eventDate = timestampInfo.eventDate;
+  const rollupTimestamp = timestampInfo.usedClientTimestamp
+    ? eventDate
+    : createdAt;
   const metadata = sanitizeMetadataRecord(
     payload.metadata ?? null,
     MAX_METADATA_VALUE_LENGTH,
   );
   const eventId = payload.eventId ?? null;
-  const timestamp = createdAt.getTime();
+  const timestamp = eventDate.getTime();
   const sessionId = payload.sessionId ?? payload.session_id ?? null;
-  const sessionEventTimestamp = createdAt.getTime();
-  let previousPageviews = 0;
-  let previousMaxTimestamp: number | null = null;
-
-  if (payload.type === "pageview" && sessionId) {
-    const [prior] = await db
-      .select({
-        count: sql<number>`count(*)`,
-        maxTimestamp: sql<number | null>`max(${rawEvent.timestamp})`,
-      })
-      .from(rawEvent)
-      .where(
-        and(
-          eq(rawEvent.siteId, authResult.siteId),
-          eq(rawEvent.sessionId, sessionId),
-          eq(rawEvent.visitorId, payload.visitorId),
-          eq(rawEvent.type, "pageview"),
-        ),
-      );
-    previousPageviews = Number(prior?.count ?? 0);
-    previousMaxTimestamp =
-      prior?.maxTimestamp !== null && prior?.maxTimestamp !== undefined
-        ? Number(prior.maxTimestamp)
-        : null;
-  }
+  const sessionEventTimestamp = eventDate.getTime();
 
   try {
     await db.insert(rawEvent).values({
@@ -722,39 +951,58 @@ export const POST = async (request: NextRequest) => {
     throw error;
   }
 
+  if (isBot) {
+    return withCors(NextResponse.json({ ok: true, bot: true }));
+  }
+
   const metrics = metricsForEvent({
     type: payload.type,
     metadata: metadata && typeof metadata === "object" ? metadata : null,
   });
+
+  if (payload.type === "pageview") {
+    const bucketDate = toBucketDate(rollupTimestamp);
+    const inserted = await db
+      .insert(visitorDaily)
+      .values({
+        id: randomUUID(),
+        siteId: authResult.siteId,
+        date: bucketDate,
+        visitorId: payload.visitorId,
+      })
+      .onConflictDoNothing({
+        target: [visitorDaily.siteId, visitorDaily.date, visitorDaily.visitorId],
+      })
+      .returning({ id: visitorDaily.id });
+    if (inserted.length > 0) {
+      metrics.visitors = 1;
+    }
+  }
+
   const sessionMetrics =
     payload.type === "pageview" && sessionId
-      ? metricsForSession({
-          eventType: payload.type,
-          previousPageviews,
-          previousMaxTimestamp,
+      ? await buildSessionMetrics({
+          siteId: authResult.siteId,
+          sessionId,
+          visitorId: payload.visitorId,
           eventTimestamp: sessionEventTimestamp,
         })
-      : metricsForSession({
-          eventType: "noop",
-          previousPageviews: 0,
-          previousMaxTimestamp: null,
-          eventTimestamp: sessionEventTimestamp,
-        });
+      : createEmptyMetrics();
 
   await upsertRollups({
     siteId: authResult.siteId,
-    timestamp: createdAt,
+    timestamp: rollupTimestamp,
     metrics,
   });
   await upsertRollups({
     siteId: authResult.siteId,
-    timestamp: createdAt,
+    timestamp: rollupTimestamp,
     metrics: sessionMetrics,
   });
 
   await upsertDimensionRollups({
     siteId: authResult.siteId,
-    timestamp: createdAt,
+    timestamp: rollupTimestamp,
     metrics,
     dimensions: extractDimensionRollups({
       type: payload.type,
