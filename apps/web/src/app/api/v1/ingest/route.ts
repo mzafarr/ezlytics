@@ -384,79 +384,81 @@ const resolveEventTimestamp = (payload: { ts?: number; timestamp?: Date }) => {
 
 const createEmptyMetrics = () => metricsForEvent({ type: "noop" });
 
+type DbLike = Pick<typeof db, "insert" | "update" | "execute">;
+
 const buildSessionMetrics = async ({
+  db: dbLike = db,
   siteId,
   sessionId,
   visitorId,
   eventTimestamp,
 }: {
+  db?: DbLike;
   siteId: string;
   sessionId: string;
   visitorId: string;
   eventTimestamp: number;
 }) => {
-  return db.transaction(async (tx) => {
-    const inserted = await tx
-      .insert(analyticsSession)
-      .values({
-        id: randomUUID(),
-        siteId,
-        sessionId,
-        visitorId,
-        firstTimestamp: eventTimestamp,
-        lastTimestamp: eventTimestamp,
-        pageviews: 1,
-      })
-      .onConflictDoNothing({
-        target: [analyticsSession.siteId, analyticsSession.sessionId, analyticsSession.visitorId],
-      })
-      .returning({ id: analyticsSession.id });
+  const inserted = await dbLike
+    .insert(analyticsSession)
+    .values({
+      id: randomUUID(),
+      siteId,
+      sessionId,
+      visitorId,
+      firstTimestamp: eventTimestamp,
+      lastTimestamp: eventTimestamp,
+      pageviews: 1,
+    })
+    .onConflictDoNothing({
+      target: [analyticsSession.siteId, analyticsSession.sessionId, analyticsSession.visitorId],
+    })
+    .returning({ id: analyticsSession.id });
 
-    if (inserted.length > 0) {
-      const metrics = createEmptyMetrics();
-      metrics.sessions = 1;
-      metrics.bouncedSessions = 1;
-      return metrics;
-    }
-
-    const existing = await tx.execute(
-      sql`select pageviews, last_timestamp from analytics_session where site_id = ${siteId} and session_id = ${sessionId} and visitor_id = ${visitorId} for update`,
-    );
-    const row = existing.rows[0] as
-      | { pageviews: number; last_timestamp: number }
-      | undefined;
-    if (!row) {
-      return createEmptyMetrics();
-    }
-
-    const previousPageviews = Number(row.pageviews ?? 0);
-    const previousLastTimestamp = Number(row.last_timestamp ?? 0);
-    const nextLastTimestamp = Math.max(previousLastTimestamp, eventTimestamp);
-    const durationDelta = Math.max(0, nextLastTimestamp - previousLastTimestamp);
-
-    await tx
-      .update(analyticsSession)
-      .set({
-        pageviews: previousPageviews + 1,
-        lastTimestamp: nextLastTimestamp,
-      })
-      .where(
-        and(
-          eq(analyticsSession.siteId, siteId),
-          eq(analyticsSession.sessionId, sessionId),
-          eq(analyticsSession.visitorId, visitorId),
-        ),
-      );
-
+  if (inserted.length > 0) {
     const metrics = createEmptyMetrics();
-    if (previousPageviews === 1) {
-      metrics.bouncedSessions = -1;
-    }
-    if (durationDelta > 0) {
-      metrics.avgSessionDurationMs = durationDelta;
-    }
+    metrics.sessions = 1;
+    metrics.bouncedSessions = 1;
     return metrics;
-  });
+  }
+
+  const existing = await dbLike.execute(
+    sql`select pageviews, last_timestamp from analytics_session where site_id = ${siteId} and session_id = ${sessionId} and visitor_id = ${visitorId} for update`,
+  );
+  const row = existing.rows[0] as
+    | { pageviews: number; last_timestamp: number }
+    | undefined;
+  if (!row) {
+    return createEmptyMetrics();
+  }
+
+  const previousPageviews = Number(row.pageviews ?? 0);
+  const previousLastTimestamp = Number(row.last_timestamp ?? 0);
+  const nextLastTimestamp = Math.max(previousLastTimestamp, eventTimestamp);
+  const durationDelta = Math.max(0, nextLastTimestamp - previousLastTimestamp);
+
+  await dbLike
+    .update(analyticsSession)
+    .set({
+      pageviews: previousPageviews + 1,
+      lastTimestamp: nextLastTimestamp,
+    })
+    .where(
+      and(
+        eq(analyticsSession.siteId, siteId),
+        eq(analyticsSession.sessionId, sessionId),
+        eq(analyticsSession.visitorId, visitorId),
+      ),
+    );
+
+  const metrics = createEmptyMetrics();
+  if (previousPageviews === 1) {
+    metrics.bouncedSessions = -1;
+  }
+  if (durationDelta > 0) {
+    metrics.avgSessionDurationMs = durationDelta;
+  }
+  return metrics;
 };
 
 const normalizeTrackingValues = (payload: z.infer<typeof payloadSchema>) => {
@@ -685,6 +687,38 @@ const withCors = (response: NextResponse) => {
   return response;
 };
 
+const payloadTooLargeResponse = () =>
+  withCors(
+    NextResponse.json(
+      { error: "Payload too large", limit: MAX_PAYLOAD_BYTES },
+      { status: 413 },
+    ),
+  );
+
+const readBodyText = async (request: NextRequest) => {
+  const stream = request.body;
+  if (!stream) {
+    return "";
+  }
+  const decoder = new TextDecoder();
+  let totalBytes = 0;
+  const chunks: string[] = [];
+  const reader = stream.getReader();
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) {
+      break;
+    }
+    totalBytes += value.byteLength;
+    if (totalBytes > MAX_PAYLOAD_BYTES) {
+      throw new Error("payload_too_large");
+    }
+    chunks.push(decoder.decode(value, { stream: true }));
+  }
+  chunks.push(decoder.decode());
+  return chunks.join("");
+};
+
 export const OPTIONS = () => {
   return new NextResponse(null, { status: 204, headers: corsHeaders });
 };
@@ -694,23 +728,38 @@ export const POST = async (request: NextRequest) => {
   if (lengthHeader) {
     const length = Number.parseInt(lengthHeader, 10);
     if (Number.isFinite(length) && length > MAX_PAYLOAD_BYTES) {
-      return withCors(
-        NextResponse.json(
-          { error: "Payload too large", limit: MAX_PAYLOAD_BYTES },
-          { status: 413 },
-        ),
-      );
+      return payloadTooLargeResponse();
     }
   }
 
-  const bodyText = await request.text();
-  if (Buffer.byteLength(bodyText) > MAX_PAYLOAD_BYTES) {
+  const headerAuth = request.headers.get("authorization");
+  const queryKey = new URL(request.url).searchParams.get("api_key");
+  const authResult = await verifyApiKey(
+    headerAuth || buildApiKeyHeader(queryKey),
+  );
+  if (!authResult.ok) {
     return withCors(
-      NextResponse.json(
-        { error: "Payload too large", limit: MAX_PAYLOAD_BYTES },
-        { status: 413 },
-      ),
+      NextResponse.json({ error: authResult.error }, { status: 401 }),
     );
+  }
+
+  const rateLimit = checkRateLimit({
+    ip: getClientIp(request),
+    siteId: authResult.siteId,
+    scope: "ingest",
+  });
+  if (!rateLimit.ok) {
+    return rateLimitResponse(rateLimit.retryAfter);
+  }
+
+  let bodyText = "";
+  try {
+    bodyText = await readBodyText(request);
+  } catch (error) {
+    if (error instanceof Error && error.message === "payload_too_large") {
+      return payloadTooLargeResponse();
+    }
+    throw error;
   }
 
   let body: unknown;
@@ -768,17 +817,25 @@ export const POST = async (request: NextRequest) => {
   }
 
   const payload = parsed.data;
-  const headerAuth = request.headers.get("authorization");
-  const queryKey = new URL(request.url).searchParams.get("api_key");
-  const authResult = await verifyApiKey(
-    headerAuth || buildApiKeyHeader(queryKey),
-  );
-  if (!authResult.ok) {
+  if (
+    payload.sessionId &&
+    payload.session_id &&
+    payload.sessionId !== payload.session_id
+  ) {
     return withCors(
-      NextResponse.json({ error: authResult.error }, { status: 401 }),
+      NextResponse.json(
+        {
+          error: "Invalid request",
+          details: {
+            sessionId: ["sessionId and session_id must match"],
+            session_id: ["sessionId and session_id must match"],
+          },
+          allowlist: ALLOWLIST_DOCS,
+        },
+        { status: 400 },
+      ),
     );
   }
-
   if (authResult.websiteId !== payload.websiteId) {
     return withCors(
       NextResponse.json(
@@ -816,15 +873,6 @@ export const POST = async (request: NextRequest) => {
       );
     }
   }
-  const rateLimit = checkRateLimit({
-    ip: getClientIp(request),
-    siteId: authResult.siteId,
-    scope: "ingest",
-  });
-  if (!rateLimit.ok) {
-    return rateLimitResponse(rateLimit.retryAfter);
-  }
-
   const userAgent = request.headers.get("user-agent");
   const { device, browser, os } = parseUserAgent(userAgent);
   const isBot = isBotUserAgent(userAgent);
@@ -925,92 +973,103 @@ export const POST = async (request: NextRequest) => {
   const sessionId = payload.sessionId ?? payload.session_id ?? null;
   const sessionEventTimestamp = eventDate.getTime();
 
-  try {
-    await db.insert(rawEvent).values({
-      id: randomUUID(),
-      siteId: authResult.siteId,
-      eventId,
-      type: payload.type,
-      name: payload.name ?? null,
-      visitorId: payload.visitorId,
-      sessionId,
-      timestamp,
-      country,
-      region,
-      city,
-      latitude,
-      longitude,
-      metadata,
-      normalized,
-      createdAt,
-    });
-  } catch (error) {
-    if (eventId && isUniqueViolation(error)) {
-      return withCors(NextResponse.json({ ok: true, deduped: true }));
-    }
-    throw error;
-  }
-
-  if (isBot) {
-    return withCors(NextResponse.json({ ok: true, bot: true }));
-  }
-
-  const metrics = metricsForEvent({
-    type: payload.type,
-    metadata: metadata && typeof metadata === "object" ? metadata : null,
-  });
-
-  if (payload.type === "pageview") {
-    const bucketDate = toBucketDate(rollupTimestamp);
-    const inserted = await db
-      .insert(visitorDaily)
+  const result = await db.transaction(async (tx) => {
+    const inserted = await tx
+      .insert(rawEvent)
       .values({
         id: randomUUID(),
         siteId: authResult.siteId,
-        date: bucketDate,
+        eventId,
+        type: payload.type,
+        name: payload.name ?? null,
         visitorId: payload.visitorId,
+        sessionId,
+        timestamp,
+        country,
+        region,
+        city,
+        latitude,
+        longitude,
+        metadata,
+        normalized,
+        createdAt,
       })
       .onConflictDoNothing({
-        target: [visitorDaily.siteId, visitorDaily.date, visitorDaily.visitorId],
+        target: [rawEvent.siteId, rawEvent.eventId],
       })
-      .returning({ id: visitorDaily.id });
-    if (inserted.length > 0) {
-      metrics.visitors = 1;
+      .returning({ id: rawEvent.id });
+
+    if (eventId && inserted.length === 0) {
+      return { ok: true as const, deduped: true as const };
     }
-  }
 
-  const sessionMetrics =
-    payload.type === "pageview" && sessionId
-      ? await buildSessionMetrics({
-          siteId: authResult.siteId,
-          sessionId,
-          visitorId: payload.visitorId,
-          eventTimestamp: sessionEventTimestamp,
-        })
-      : createEmptyMetrics();
+    if (isBot) {
+      return { ok: true as const, bot: true as const };
+    }
 
-  await upsertRollups({
-    siteId: authResult.siteId,
-    timestamp: rollupTimestamp,
-    metrics,
-  });
-  await upsertRollups({
-    siteId: authResult.siteId,
-    timestamp: rollupTimestamp,
-    metrics: sessionMetrics,
-  });
-
-  await upsertDimensionRollups({
-    siteId: authResult.siteId,
-    timestamp: rollupTimestamp,
-    metrics,
-    dimensions: extractDimensionRollups({
+    const metrics = metricsForEvent({
       type: payload.type,
-      name: payload.name ?? null,
       metadata: metadata && typeof metadata === "object" ? metadata : null,
-      normalized,
-    }),
+    });
+
+    if (payload.type === "pageview") {
+      const bucketDate = toBucketDate(rollupTimestamp);
+      const inserted = await tx
+        .insert(visitorDaily)
+        .values({
+          id: randomUUID(),
+          siteId: authResult.siteId,
+          date: bucketDate,
+          visitorId: payload.visitorId,
+        })
+        .onConflictDoNothing({
+          target: [visitorDaily.siteId, visitorDaily.date, visitorDaily.visitorId],
+        })
+        .returning({ id: visitorDaily.id });
+      if (inserted.length > 0) {
+        metrics.visitors = 1;
+      }
+    }
+
+    const sessionMetrics =
+      payload.type === "pageview" && sessionId
+        ? await buildSessionMetrics({
+            db: tx,
+            siteId: authResult.siteId,
+            sessionId,
+            visitorId: payload.visitorId,
+            eventTimestamp: sessionEventTimestamp,
+          })
+        : createEmptyMetrics();
+
+    await upsertRollups({
+      db: tx,
+      siteId: authResult.siteId,
+      timestamp: rollupTimestamp,
+      metrics,
+    });
+    await upsertRollups({
+      db: tx,
+      siteId: authResult.siteId,
+      timestamp: rollupTimestamp,
+      metrics: sessionMetrics,
+    });
+
+    await upsertDimensionRollups({
+      db: tx,
+      siteId: authResult.siteId,
+      timestamp: rollupTimestamp,
+      metrics,
+      dimensions: extractDimensionRollups({
+        type: payload.type,
+        name: payload.name ?? null,
+        metadata: metadata && typeof metadata === "object" ? metadata : null,
+        normalized,
+      }),
+    });
+
+    return { ok: true as const };
   });
 
-  return withCors(NextResponse.json({ ok: true }));
+  return withCors(NextResponse.json(result));
 };
