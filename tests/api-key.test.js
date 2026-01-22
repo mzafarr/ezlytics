@@ -29,9 +29,15 @@ test("proxy endpoints expose script and events routes", () => {
   const eventsRoute = read("apps/web/src/app/api/events/route.ts");
   assert.ok(eventsRoute.includes("/api/v1/ingest"));
   assert.ok(eventsRoute.includes("authorization"));
+  assert.ok(eventsRoute.includes("user-agent"));
 });
 
 test("ingest rejects mismatched session ids", () => {
   const ingestRoute = read("apps/web/src/app/api/v1/ingest/route.ts");
   assert.ok(ingestRoute.includes("sessionId and session_id must match"));
+});
+
+test("ingest accepts a single session id", () => {
+  const ingestRoute = read("apps/web/src/app/api/v1/ingest/route.ts");
+  assert.ok(ingestRoute.includes("payload.sessionId ?? payload.session_id"));
 });
