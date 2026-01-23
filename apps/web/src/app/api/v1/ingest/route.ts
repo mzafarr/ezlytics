@@ -63,7 +63,16 @@ const nameSchema = z.string().trim().min(1).max(64);
 const domainSchema = z.string().trim().min(1).max(255);
 const pathSchema = z.string().trim().min(1).max(1024);
 const timestampSchema = z.coerce.date();
-const tsSchema = z.number().int();
+const tsSchema = z.preprocess((value) => {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return Number.NaN;
+    }
+    return Number(trimmed);
+  }
+  return value;
+}, z.number().int());
 const trackingValueSchema = z.string().trim().min(1).max(255);
 
 const metadataValueSchema = z.union([

@@ -43,8 +43,23 @@ test("ingest accepts a single session id", () => {
   assert.ok(ingestRoute.includes("payload.sessionId ?? payload.session_id"));
 });
 
+test("ingest coerces numeric ts strings", () => {
+  const ingestRoute = read("apps/web/src/app/api/v1/ingest/route.ts");
+  assert.ok(ingestRoute.includes("z.preprocess"));
+  assert.ok(ingestRoute.includes('typeof value === "string"'));
+  assert.ok(ingestRoute.includes("return Number(trimmed)"));
+});
+
 test("ingest treats missing user-agent as non-bot", () => {
   const ingestRoute = read("apps/web/src/app/api/v1/ingest/route.ts");
   assert.ok(ingestRoute.includes("if (!value) {"));
   assert.ok(ingestRoute.includes("return false;"));
+});
+
+test("ingest restricts bot flag to privileged requests", () => {
+  const ingestRoute = read("apps/web/src/app/api/v1/ingest/route.ts");
+  assert.ok(ingestRoute.includes("payload.bot !== undefined"));
+  assert.ok(ingestRoute.includes("Bot flag requires a server key"));
+  assert.ok(ingestRoute.includes("x-ingest-server-key"));
+  assert.ok(ingestRoute.includes("INGEST_SERVER_KEY"));
 });
