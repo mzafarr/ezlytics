@@ -18,6 +18,7 @@ export const env = createEnv({
     ROLLUP_HOURLY_RETENTION_DAYS: z.coerce.number().int().min(1).optional(),
     RETENTION_CLEANUP_INTERVAL_MINUTES: z.coerce.number().int().min(1).optional(),
     RETENTION_CRON_SECRET: z.string().min(1).optional(),
+    ROLLUP_REBUILD_SECRET: z.string().min(1).optional(),
     RATE_LIMIT_WINDOW_SECONDS: z.coerce.number().int().min(1).optional(),
     RATE_LIMIT_MAX_REQUESTS_PER_IP: z.coerce.number().int().min(1).optional(),
     RATE_LIMIT_MAX_REQUESTS_PER_SITE: z.coerce.number().int().min(1).optional(),

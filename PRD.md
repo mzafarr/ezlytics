@@ -55,11 +55,11 @@ The ingest pipeline needs additional quality controls and structural cleanup bey
 
 **Acceptance Criteria:**
 
-- [ ] Extract schemas/constants to `ingest/schema.ts`.
-- [ ] Extract normalization helpers to `ingest/normalize.ts`.
-- [ ] Extract geo resolution to `ingest/geo.ts`.
-- [ ] Extract metrics/session helpers to `ingest/metrics.ts`.
-- [ ] `route.ts` becomes orchestration only.
+- [x] Extract schemas/constants to `ingest/schema.ts`.
+- [x] Extract normalization helpers to `ingest/normalize.ts`.
+- [x] Extract geo resolution to `ingest/geo.ts`.
+- [x] Extract metrics/session helpers to `ingest/metrics.ts`.
+- [x] `route.ts` becomes orchestration only.
 - [ ] Typecheck/lint passes.
 
 ### US-004: Add rollup rebuild job (v0, destructive allowed)
@@ -68,9 +68,9 @@ The ingest pipeline needs additional quality controls and structural cleanup bey
 
 **Acceptance Criteria:**
 
-- [ ] Provide a rebuild job that can truncate rollup tables and recompute from raw events for a time window.
-- [ ] Job can run for a single site or all sites.
-- [ ] Job has a dry-run mode that reports counts without writing.
+- [x] Provide a rebuild job that can truncate rollup tables and recompute from raw events for a time window.
+- [x] Job can run for a single site or all sites.
+- [x] Job has a dry-run mode that reports counts without writing.
 - [ ] Typecheck/lint passes.
 
 ## Functional Requirements
