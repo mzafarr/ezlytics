@@ -90,9 +90,11 @@ Cron
 
 ## Bot Handling (privacy‑first)
 
-- If UA is missing or matches bot signatures:
+- If UA matches bot signatures:
   - raw_event is still stored
   - rollups/session/visitors skipped
+- UA missing does not mark bot; rollups proceed unless a server-key bot flag is set.
+- Client `bot` flag is only honored when a server key is provided.
 
 ## Domain Allowlist
 

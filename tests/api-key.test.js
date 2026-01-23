@@ -42,3 +42,9 @@ test("ingest accepts a single session id", () => {
   const ingestRoute = read("apps/web/src/app/api/v1/ingest/route.ts");
   assert.ok(ingestRoute.includes("payload.sessionId ?? payload.session_id"));
 });
+
+test("ingest treats missing user-agent as non-bot", () => {
+  const ingestRoute = read("apps/web/src/app/api/v1/ingest/route.ts");
+  assert.ok(ingestRoute.includes("if (!value) {"));
+  assert.ok(ingestRoute.includes("return false;"));
+});

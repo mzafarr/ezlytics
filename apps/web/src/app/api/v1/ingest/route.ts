@@ -44,6 +44,7 @@ const ALLOWED_TOP_LEVEL_KEYS = new Set([
   "session_id",
   "sessionId",
   "eventId",
+  "bot",
   "metadata",
   "utm_source",
   "utm_medium",
@@ -166,6 +167,7 @@ const payloadSchema = z
     session_id: idSchema.optional(),
     sessionId: idSchema.optional(),
     eventId: idSchema.optional(),
+    bot: z.boolean().optional(),
     metadata: metadataSchema,
     utm_source: trackingValueSchema.optional(),
     utm_medium: trackingValueSchema.optional(),
@@ -304,7 +306,7 @@ const botSignatures = [
 
 const isBotUserAgent = (value: string | null) => {
   if (!value) {
-    return true;
+    return false;
   }
   const normalized = value.toLowerCase();
   return botSignatures.some((signature) => normalized.includes(signature));
@@ -660,6 +662,17 @@ const resolveVersion = (payload: Record<string, unknown>) => {
   return parsed;
 };
 
+const resolveIngestServerKey = (headers: Headers, queryKey: string | null) => {
+  const header = headers.get("x-ingest-server-key");
+  if (header && header.trim()) {
+    return header.trim();
+  }
+  if (queryKey && queryKey.trim()) {
+    return queryKey.trim();
+  }
+  return "";
+};
+
 const rateLimitResponse = (retryAfter: number) =>
   withCors(
     NextResponse.json(
@@ -732,8 +745,18 @@ export const POST = async (request: NextRequest) => {
     }
   }
 
+  const url = new URL(request.url);
   const headerAuth = request.headers.get("authorization");
-  const queryKey = new URL(request.url).searchParams.get("api_key");
+  const queryKey = url.searchParams.get("api_key");
+  const ingestServerKey = resolveIngestServerKey(
+    request.headers,
+    url.searchParams.get("server_key"),
+  );
+  const hasPrivilegedBotAccess = Boolean(
+    env.INGEST_SERVER_KEY &&
+      ingestServerKey &&
+      ingestServerKey === env.INGEST_SERVER_KEY,
+  );
   const authResult = await verifyApiKey(
     headerAuth || buildApiKeyHeader(queryKey),
   );
@@ -836,6 +859,18 @@ export const POST = async (request: NextRequest) => {
       ),
     );
   }
+  if (payload.bot !== undefined && !hasPrivilegedBotAccess) {
+    return withCors(
+      NextResponse.json(
+        {
+          error: "Invalid request",
+          details: { bot: ["Bot flag requires a server key"] },
+          allowlist: ALLOWLIST_DOCS,
+        },
+        { status: 400 },
+      ),
+    );
+  }
   if (authResult.websiteId !== payload.websiteId) {
     return withCors(
       NextResponse.json(
@@ -875,7 +910,8 @@ export const POST = async (request: NextRequest) => {
   }
   const userAgent = request.headers.get("user-agent");
   const { device, browser, os } = parseUserAgent(userAgent);
-  const isBot = isBotUserAgent(userAgent);
+  const botOverride = hasPrivilegedBotAccess && payload.bot === true;
+  const isBot = isBotUserAgent(userAgent) || botOverride;
   const ipAddress = getClientIp(request);
   const headerCountry = normalizeCountry(
     getHeaderValue(request.headers, [
