@@ -13,10 +13,11 @@ import {
   type DailyEntry,
 } from "./dashboard-helpers";
 
-export type RollupRevenueByType =
-  | { new?: number; renewal?: number; refund?: number }
-  | null
-  | undefined;
+export type RollupRevenueByType = {
+  new?: number;
+  renewal?: number;
+  refund?: number;
+};
 
 export type RollupDailyEntry = {
   date: string | number | Date;
@@ -26,12 +27,15 @@ export type RollupDailyEntry = {
   revenue?: number;
   bouncedSessions?: number;
   avgSessionDurationMs?: number;
-  revenueByType?: RollupRevenueByType;
+  revenueByType?: unknown;
 };
 
 export type RollupDimensionEntry = {
   dimension: string;
   dimensionValue: string;
+  visitors?: number;
+  sessions?: number;
+  goals?: number;
   pageviews?: number;
   revenue?: number;
 };
@@ -94,6 +98,9 @@ export type DashboardOverviewData = {
     avgSessionDurationMs: number;
   } | null;
   dimensionTotals: Record<string, Record<string, number>>;
+  dimensionVisitorTotals: Record<string, Record<string, number>>;
+  dimensionSessionTotals: Record<string, Record<string, number>>;
+  dimensionGoalTotals: Record<string, Record<string, number>>;
   dimensionRevenueTotals: Record<string, Record<string, number>>;
   topCountries: Array<[string, number]>;
   topRegions: Array<[string, number]>;
@@ -110,6 +117,25 @@ export type DashboardOverviewData = {
   visibleBrowsers: Array<[string, number]>;
   geoDots: GeoDot[];
   geoCountryTotals: Record<string, number>;
+  geoCountryRevenueTotals: Record<string, number>;
+  geoCountryGoalTotals: Record<string, number>;
+  geoCountrySessionTotals: Record<string, number>;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === "object";
+
+const normalizeRevenueByType = (
+  value: unknown,
+): RollupRevenueByType | null => {
+  if (!isRecord(value)) {
+    return null;
+  }
+  return {
+    new: toNumber(value.new),
+    renewal: toNumber(value.renewal),
+    refund: toNumber(value.refund),
+  };
 };
 
 const getTopEntries = (
@@ -133,10 +159,7 @@ export function useDashboardOverviewData(
         revenue: toNumber(entry.revenue),
         bounced: toNumber(entry.bouncedSessions),
         durationMs: toNumber(entry.avgSessionDurationMs),
-        revenueByType: entry.revenueByType as
-          | { new?: number; renewal?: number; refund?: number }
-          | null
-          | undefined,
+        revenueByType: normalizeRevenueByType(entry.revenueByType),
       }))
       .sort((left, right) => left.date.localeCompare(right.date));
   }, [rollup?.daily]);
@@ -366,18 +389,65 @@ export function useDashboardOverviewData(
     return totals;
   }, [rollup?.dimensions]);
 
+  const dimensionVisitorTotals = useMemo(() => {
+    const totals: Record<string, Record<string, number>> = {};
+    const dimensions = rollup?.dimensions ?? [];
+    for (const entry of dimensions) {
+      const dimension = entry.dimension;
+      const label = entry.dimensionValue.trim() || "unknown";
+      const visitorCount = toNumber(entry.visitors);
+      const count =
+        visitorCount > 0 ? visitorCount : toNumber(entry.pageviews ?? 0);
+      if (!totals[dimension]) {
+        totals[dimension] = {};
+      }
+      totals[dimension][label] = (totals[dimension][label] ?? 0) + count;
+    }
+    return totals;
+  }, [rollup?.dimensions]);
+
+  const dimensionGoalTotals = useMemo(() => {
+    const totals: Record<string, Record<string, number>> = {};
+    const dimensions = rollup?.dimensions ?? [];
+    for (const entry of dimensions) {
+      const dimension = entry.dimension;
+      const label = entry.dimensionValue.trim() || "unknown";
+      const count = entry.goals ?? 0;
+      if (!totals[dimension]) {
+        totals[dimension] = {};
+      }
+      totals[dimension][label] = (totals[dimension][label] ?? 0) + count;
+    }
+    return totals;
+  }, [rollup?.dimensions]);
+
+  const dimensionSessionTotals = useMemo(() => {
+    const totals: Record<string, Record<string, number>> = {};
+    const dimensions = rollup?.dimensions ?? [];
+    for (const entry of dimensions) {
+      const dimension = entry.dimension;
+      const label = entry.dimensionValue.trim() || "unknown";
+      const count = entry.sessions ?? 0;
+      if (!totals[dimension]) {
+        totals[dimension] = {};
+      }
+      totals[dimension][label] = (totals[dimension][label] ?? 0) + count;
+    }
+    return totals;
+  }, [rollup?.dimensions]);
+
   const topEntries = useMemo(
     () => ({
-      topCountries: getTopEntries(dimensionTotals.country, 5),
-      topRegions: getTopEntries(dimensionTotals.region, 5),
-      topCities: getTopEntries(dimensionTotals.city, 5),
+      topCountries: getTopEntries(dimensionVisitorTotals.country, 5),
+      topRegions: getTopEntries(dimensionVisitorTotals.region, 5),
+      topCities: getTopEntries(dimensionVisitorTotals.city, 5),
       topReferrers: getTopEntries(dimensionTotals.referrer_domain, 6),
       topSources: getTopEntries(dimensionTotals.utm_source, 6),
       topPages: getTopEntries(dimensionTotals.page, 8),
       topDevices: getTopEntries(dimensionTotals.device, 6),
       topBrowsers: getTopEntries(dimensionTotals.browser, 6),
     }),
-    [dimensionTotals],
+    [dimensionTotals, dimensionVisitorTotals],
   );
 
   const visibleCountries = useMemo(
@@ -435,10 +505,9 @@ export function useDashboardOverviewData(
 
   const geoCountryTotals = useMemo(() => {
     const totals: Record<string, number> = {};
-    for (const entry of rollup?.geoPoints ?? []) {
-      const rawCountry =
-        typeof entry.country === "string" ? entry.country : "";
-      const normalized = normalizeCountryName(rawCountry);
+    const entries = dimensionVisitorTotals.country ?? {};
+    for (const [label, count] of Object.entries(entries)) {
+      const normalized = normalizeCountryName(label);
       if (!normalized) {
         continue;
       }
@@ -446,10 +515,61 @@ export function useDashboardOverviewData(
       if (!key) {
         continue;
       }
-      totals[key] = (totals[key] ?? 0) + 1;
+      totals[key] = (totals[key] ?? 0) + count;
     }
     return totals;
-  }, [rollup?.geoPoints]);
+  }, [dimensionVisitorTotals.country]);
+
+  const geoCountryRevenueTotals = useMemo(() => {
+    const totals: Record<string, number> = {};
+    const entries = dimensionRevenueTotals.country ?? {};
+    for (const [label, count] of Object.entries(entries)) {
+      const normalized = normalizeCountryName(label);
+      if (!normalized) {
+        continue;
+      }
+      const key = getCountryLookupKey(normalized);
+      if (!key) {
+        continue;
+      }
+      totals[key] = (totals[key] ?? 0) + count;
+    }
+    return totals;
+  }, [dimensionRevenueTotals.country]);
+
+  const geoCountryGoalTotals = useMemo(() => {
+    const totals: Record<string, number> = {};
+    const entries = dimensionGoalTotals.country ?? {};
+    for (const [label, count] of Object.entries(entries)) {
+      const normalized = normalizeCountryName(label);
+      if (!normalized) {
+        continue;
+      }
+      const key = getCountryLookupKey(normalized);
+      if (!key) {
+        continue;
+      }
+      totals[key] = (totals[key] ?? 0) + count;
+    }
+    return totals;
+  }, [dimensionGoalTotals.country]);
+
+  const geoCountrySessionTotals = useMemo(() => {
+    const totals: Record<string, number> = {};
+    const entries = dimensionSessionTotals.country ?? {};
+    for (const [label, count] of Object.entries(entries)) {
+      const normalized = normalizeCountryName(label);
+      if (!normalized) {
+        continue;
+      }
+      const key = getCountryLookupKey(normalized);
+      if (!key) {
+        continue;
+      }
+      totals[key] = (totals[key] ?? 0) + count;
+    }
+    return totals;
+  }, [dimensionSessionTotals.country]);
 
   const geoDots = useMemo(() => {
     const maxCount = geoPoints.reduce(
@@ -478,6 +598,9 @@ export function useDashboardOverviewData(
     chartData,
     metricDeltas,
     dimensionTotals,
+    dimensionVisitorTotals,
+    dimensionSessionTotals,
+    dimensionGoalTotals,
     dimensionRevenueTotals,
     topCountries: topEntries.topCountries,
     topRegions: topEntries.topRegions,
@@ -494,5 +617,8 @@ export function useDashboardOverviewData(
     visibleBrowsers,
     geoDots,
     geoCountryTotals,
+    geoCountryRevenueTotals,
+    geoCountryGoalTotals,
+    geoCountrySessionTotals,
   };
 }

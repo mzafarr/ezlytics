@@ -157,6 +157,22 @@ export const TEST_TOP_COUNTRIES: Array<[string, number]> = [
   ["France", 5400],
 ];
 
+export const TEST_TOP_REGIONS: Array<[string, number]> = [
+  ["California", 14200],
+  ["England", 9200],
+  ["Ontario", 6400],
+  ["Île-de-France", 4300],
+  ["Berlin", 3800],
+];
+
+export const TEST_TOP_CITIES: Array<[string, number]> = [
+  ["San Francisco", 6200],
+  ["London", 5400],
+  ["Toronto", 3900],
+  ["Paris", 3100],
+  ["Berlin", 2800],
+];
+
 // Devices
 export const TEST_TOP_DEVICES: Array<[string, number]> = [
   ["Desktop", 52100],
@@ -212,16 +228,93 @@ export const TEST_GEO_DOTS: GeoDot[] = [
   { lat: 30.0444, lng: 31.2357, count: 500, x: 468, y: 140, size: 2 }, // Cairo
 ];
 
+export const TEST_DIMENSION_VISITOR_TOTALS: Record<string, Record<string, number>> =
+  {
+    country: Object.fromEntries(TEST_TOP_COUNTRIES),
+    region: Object.fromEntries(TEST_TOP_REGIONS),
+    city: Object.fromEntries(TEST_TOP_CITIES),
+  };
+
+export const TEST_DIMENSION_REVENUE_TOTALS: Record<string, Record<string, number>> =
+  {
+    country: {
+      "United States": 128000,
+      "United Kingdom": 42000,
+      Germany: 32000,
+      Canada: 24000,
+      France: 19000,
+    },
+    region: {
+      California: 42000,
+      England: 28000,
+      Ontario: 19000,
+      "Île-de-France": 14000,
+      Berlin: 12000,
+    },
+    city: {
+      "San Francisco": 18000,
+      London: 16000,
+      Toronto: 11000,
+      Paris: 9000,
+      Berlin: 8000,
+    },
+  };
+
+export const TEST_GEO_COUNTRY_TOTALS = {
+  "united-states": 38200,
+  "united-kingdom": 12400,
+  germany: 8900,
+  canada: 6700,
+  france: 5400,
+};
+
+export const TEST_GEO_COUNTRY_REVENUE_TOTALS = {
+  "united-states": 128000,
+  "united-kingdom": 42000,
+  germany: 32000,
+  canada: 24000,
+  france: 19000,
+};
+
+export const TEST_GEO_COUNTRY_GOAL_TOTALS = {
+  "united-states": 4800,
+  "united-kingdom": 1600,
+  germany: 1200,
+  canada: 980,
+  france: 860,
+};
+
+export const TEST_GEO_COUNTRY_SESSION_TOTALS = {
+  "united-states": 5200,
+  "united-kingdom": 1900,
+  germany: 1400,
+  canada: 1100,
+  france: 1000,
+};
+
 // Full test data object matching DashboardOverviewData interface
 export const TEST_OVERVIEW_DATA: Omit<
   DashboardOverviewData,
-  "dailyEntries" | "dimensionTotals" | "sessionTotals" | "goalsTotal"
+  | "dailyEntries"
+  | "dimensionTotals"
+  | "dimensionVisitorTotals"
+  | "dimensionSessionTotals"
+  | "dimensionGoalTotals"
+  | "dimensionRevenueTotals"
+  | "sessionTotals"
+  | "goalsTotal"
+  | "geoCountryTotals"
+  | "geoCountryRevenueTotals"
+  | "geoCountryGoalTotals"
+  | "geoCountrySessionTotals"
 > & {
   chartData: ChartDatum[];
   topReferrers: Array<[string, number]>;
   topSources: Array<[string, number]>;
   topPages: Array<[string, number]>;
   visibleCountries: Array<[string, number]>;
+  visibleRegions: Array<[string, number]>;
+  visibleCities: Array<[string, number]>;
   visibleDevices: Array<[string, number]>;
   visibleBrowsers: Array<[string, number]>;
   geoDots: GeoDot[];
@@ -240,12 +333,16 @@ export const TEST_OVERVIEW_DATA: Omit<
   chartData: TEST_CHART_DATA,
   metricDeltas: TEST_STATS_DATA.deltas,
   topCountries: TEST_TOP_COUNTRIES,
+  topRegions: TEST_TOP_REGIONS,
+  topCities: TEST_TOP_CITIES,
   topReferrers: TEST_TOP_REFERRERS,
   topSources: TEST_TOP_SOURCES,
   topPages: TEST_TOP_PAGES,
   topDevices: TEST_TOP_DEVICES,
   topBrowsers: TEST_TOP_BROWSERS,
   visibleCountries: TEST_TOP_COUNTRIES,
+  visibleRegions: TEST_TOP_REGIONS,
+  visibleCities: TEST_TOP_CITIES,
   visibleDevices: TEST_TOP_DEVICES,
   visibleBrowsers: TEST_TOP_BROWSERS,
   geoDots: TEST_GEO_DOTS,
