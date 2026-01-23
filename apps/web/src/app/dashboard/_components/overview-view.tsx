@@ -225,11 +225,11 @@ export function DashboardOverviewView({
 
   const getGeoFill = (value: number) => {
     if (!value || geoMaxValue === 0) {
-      return { fill: "hsl(var(--muted))", opacity: 0.35 };
+      return { fill: "var(--muted)", opacity: 0.35 };
     }
     const intensity = value / geoMaxValue;
     const opacity = 0.2 + intensity * 0.7;
-    return { fill: "hsl(var(--primary))", opacity };
+    return { fill: "var(--secondary)", opacity };
   };
 
   const getGeoLabel = (rawName: string) => {
@@ -391,6 +391,9 @@ export function DashboardOverviewView({
                   <ComposableMap
                     width={MAP_WIDTH}
                     height={MAP_HEIGHT}
+                    projection="geoNaturalEarth1"
+                    projectionConfig={{ scale: 135 }}
+                    translate={[MAP_WIDTH / 2, MAP_HEIGHT / 2 + 12]}
                     className="h-full w-full"
                   >
                     <Geographies geography="/world-countries-110m.json">
@@ -409,7 +412,7 @@ export function DashboardOverviewView({
                               opacity={
                                 isActive ? Math.min(1, opacity + 0.15) : opacity
                               }
-                              stroke="hsl(var(--border))"
+                              stroke="var(--border)"
                               strokeWidth={isActive ? 1 : 0.5}
                               onMouseEnter={(event: MouseEvent<SVGPathElement>) =>
                                 handleGeoEnter(geoName, event)

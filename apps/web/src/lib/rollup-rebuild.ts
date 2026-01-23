@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 
-import { asc } from "drizzle-orm";
 import {
   db,
   and,
@@ -12,10 +11,11 @@ import {
   rollupHourly,
   sql,
 } from "@my-better-t-app/db";
-import { extractDimensionRollups, metricsForEvent, RollupMetrics } from "@/lib/rollups";
+import { extractDimensionRollups, metricsForEvent, type RollupMetrics } from "@/lib/rollups";
 
 type SessionState = {
   pageviews: number;
+  firstTimestamp: number;
   lastTimestamp: number;
 };
 
@@ -108,9 +108,9 @@ const toBucketDate = (timestamp: number) =>
 const startOfUtcDay = (value: Date) =>
   new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
 
-const insertInChunks = async <Row extends Record<string, unknown>>(
+const insertInChunks = async (
   table: typeof rollupDaily | typeof rollupHourly,
-  rows: Row[],
+  rows: Array<typeof rollupDaily.$inferInsert | typeof rollupHourly.$inferInsert>,
   chunkSize = 500,
 ) => {
   for (let i = 0; i < rows.length; i += chunkSize) {
@@ -118,9 +118,11 @@ const insertInChunks = async <Row extends Record<string, unknown>>(
   }
 };
 
-const insertDimensionInChunks = async <Row extends Record<string, unknown>>(
+const insertDimensionInChunks = async (
   table: typeof rollupDimensionDaily | typeof rollupDimensionHourly,
-  rows: Row[],
+  rows: Array<
+    typeof rollupDimensionDaily.$inferInsert | typeof rollupDimensionHourly.$inferInsert
+  >,
   chunkSize = 500,
 ) => {
   for (let i = 0; i < rows.length; i += chunkSize) {
@@ -173,7 +175,7 @@ export const runRollupRebuild = async ({
     })
     .from(rawEvent)
     .where(whereClause)
-    .orderBy(asc(rawEvent.createdAt), asc(rawEvent.id));
+    .orderBy(rawEvent.createdAt, rawEvent.id);
 
   const dailyMap = new Map<string, RollupMetrics>();
   const hourlyMap = new Map<string, RollupMetrics>();
@@ -238,31 +240,90 @@ export const runRollupRebuild = async ({
         const existing = sessionMap.get(sessionKey);
         const sessionMetrics = createEmptyMetrics();
         if (!existing) {
+          const sessionStartDateKey = toBucketDate(timestamp);
+          const sessionStartHour = new Date(timestamp).getUTCHours();
+          const sessionDailyKey = `${row.siteId}|${sessionStartDateKey}`;
+          const sessionHourlyKey = `${row.siteId}|${sessionStartDateKey}|${sessionStartHour}`;
           sessionMap.set(sessionKey, {
             pageviews: 1,
+            firstTimestamp: timestamp,
             lastTimestamp: timestamp,
           });
           sessionMetrics.sessions = 1;
           sessionMetrics.bouncedSessions = 1;
+          if (hasMetrics(sessionMetrics)) {
+            const dailyMetrics = dailyMap.get(sessionDailyKey) ?? createEmptyMetrics();
+            addMetrics(dailyMetrics, sessionMetrics);
+            dailyMap.set(sessionDailyKey, dailyMetrics);
+            const hourlyMetrics = hourlyMap.get(sessionHourlyKey) ?? createEmptyMetrics();
+            addMetrics(hourlyMetrics, sessionMetrics);
+            hourlyMap.set(sessionHourlyKey, hourlyMetrics);
+          }
         } else {
+          const previousStartDateKey = toBucketDate(existing.firstTimestamp);
+          const previousStartHour = new Date(existing.firstTimestamp).getUTCHours();
+          const previousDailyKey = `${row.siteId}|${previousStartDateKey}`;
+          const previousHourlyKey = `${row.siteId}|${previousStartDateKey}|${previousStartHour}`;
+          const nextFirstTimestamp = Math.min(existing.firstTimestamp, timestamp);
+          const nextLastTimestamp = Math.max(existing.lastTimestamp, timestamp);
+          const previousDuration = Math.max(
+            0,
+            existing.lastTimestamp - existing.firstTimestamp,
+          );
+          const nextDuration = Math.max(0, nextLastTimestamp - nextFirstTimestamp);
+          const nextStartDateKey = toBucketDate(nextFirstTimestamp);
+          const nextStartHour = new Date(nextFirstTimestamp).getUTCHours();
+          const nextDailyKey = `${row.siteId}|${nextStartDateKey}`;
+          const nextHourlyKey = `${row.siteId}|${nextStartDateKey}|${nextStartHour}`;
           if (existing.pageviews === 1) {
             sessionMetrics.bouncedSessions = -1;
           }
-          const nextLastTimestamp = Math.max(existing.lastTimestamp, timestamp);
-          const durationDelta = Math.max(0, nextLastTimestamp - existing.lastTimestamp);
-          if (durationDelta > 0) {
+          const durationDelta = nextDuration - previousDuration;
+          if (durationDelta !== 0) {
             sessionMetrics.avgSessionDurationMs = durationDelta;
           }
+          const previousPageviews = existing.pageviews;
           existing.pageviews += 1;
+          existing.firstTimestamp = nextFirstTimestamp;
           existing.lastTimestamp = nextLastTimestamp;
-        }
-        if (hasMetrics(sessionMetrics)) {
-          const dailyMetrics = dailyMap.get(dailyKey) ?? createEmptyMetrics();
-          addMetrics(dailyMetrics, sessionMetrics);
-          dailyMap.set(dailyKey, dailyMetrics);
-          const hourlyMetrics = hourlyMap.get(hourlyKey) ?? createEmptyMetrics();
-          addMetrics(hourlyMetrics, sessionMetrics);
-          hourlyMap.set(hourlyKey, hourlyMetrics);
+          if (previousStartDateKey !== nextStartDateKey || previousStartHour !== nextStartHour) {
+            const removeMetrics = createEmptyMetrics();
+            removeMetrics.sessions = -1;
+            if (previousPageviews === 1) {
+              removeMetrics.bouncedSessions = -1;
+            }
+            if (previousDuration !== 0) {
+              removeMetrics.avgSessionDurationMs = -previousDuration;
+            }
+            const removeDaily = dailyMap.get(previousDailyKey) ?? createEmptyMetrics();
+            addMetrics(removeDaily, removeMetrics);
+            dailyMap.set(previousDailyKey, removeDaily);
+            const removeHourly = hourlyMap.get(previousHourlyKey) ?? createEmptyMetrics();
+            addMetrics(removeHourly, removeMetrics);
+            hourlyMap.set(previousHourlyKey, removeHourly);
+
+            const addMetricsDelta = createEmptyMetrics();
+            addMetricsDelta.sessions = 1;
+            if (previousPageviews === 1) {
+              addMetricsDelta.bouncedSessions = 1;
+            }
+            if (nextDuration !== 0) {
+              addMetricsDelta.avgSessionDurationMs = nextDuration;
+            }
+            const addDaily = dailyMap.get(nextDailyKey) ?? createEmptyMetrics();
+            addMetrics(addDaily, addMetricsDelta);
+            dailyMap.set(nextDailyKey, addDaily);
+            const addHourly = hourlyMap.get(nextHourlyKey) ?? createEmptyMetrics();
+            addMetrics(addHourly, addMetricsDelta);
+            hourlyMap.set(nextHourlyKey, addHourly);
+          } else if (hasMetrics(sessionMetrics)) {
+            const dailyMetrics = dailyMap.get(nextDailyKey) ?? createEmptyMetrics();
+            addMetrics(dailyMetrics, sessionMetrics);
+            dailyMap.set(nextDailyKey, dailyMetrics);
+            const hourlyMetrics = hourlyMap.get(nextHourlyKey) ?? createEmptyMetrics();
+            addMetrics(hourlyMetrics, sessionMetrics);
+            hourlyMap.set(nextHourlyKey, hourlyMetrics);
+          }
         }
       }
     }

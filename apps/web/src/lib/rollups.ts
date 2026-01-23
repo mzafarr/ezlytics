@@ -43,9 +43,9 @@ const normalizeDelta = (value: number) => (Number.isFinite(value) ? Math.trunc(v
 
 const normalizeMetrics = (metrics: RollupMetrics): RollupMetrics => ({
   visitors: normalizeMetric(metrics.visitors),
-  sessions: normalizeMetric(metrics.sessions),
+  sessions: normalizeDelta(metrics.sessions),
   bouncedSessions: normalizeDelta(metrics.bouncedSessions),
-  avgSessionDurationMs: normalizeMetric(metrics.avgSessionDurationMs),
+  avgSessionDurationMs: normalizeDelta(metrics.avgSessionDurationMs),
   pageviews: normalizeMetric(metrics.pageviews),
   goals: normalizeMetric(metrics.goals),
   revenue: normalizeMetric(metrics.revenue),
@@ -58,9 +58,9 @@ const normalizeMetrics = (metrics: RollupMetrics): RollupMetrics => ({
 
 const hasMetrics = (metrics: RollupMetrics) =>
   metrics.visitors > 0 ||
-  metrics.sessions > 0 ||
+  metrics.sessions !== 0 ||
   metrics.bouncedSessions !== 0 ||
-  metrics.avgSessionDurationMs > 0 ||
+  metrics.avgSessionDurationMs !== 0 ||
   metrics.pageviews > 0 ||
   metrics.goals > 0 ||
   metrics.revenue > 0 ||

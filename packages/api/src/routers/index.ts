@@ -182,7 +182,7 @@ export const appRouter = router({
         const startDate = input.startDate ? input.startDate : null;
         const endDate = input.endDate ? input.endDate : null;
 
-         const daily = await db.query.rollupDaily.findMany({
+        const daily = await db.query.rollupDaily.findMany({
            where: (rollups, { and, eq, gte, lte }) => {
              const clauses = [eq(rollups.siteId, siteRecord.id)];
              if (startDate) {
@@ -195,7 +195,7 @@ export const appRouter = router({
            },
          });
 
-         const dimensions = await db.query.rollupDimensionDaily.findMany({
+        const dimensions = await db.query.rollupDimensionDaily.findMany({
            where: (rollups, { and, eq, gte, lte }) => {
              const clauses = [eq(rollups.siteId, siteRecord.id)];
              if (startDate) {
@@ -208,7 +208,7 @@ export const appRouter = router({
            },
          });
 
-         const geoPoints = await db.query.rawEvent.findMany({
+        const geoPoints = await db.query.rawEvent.findMany({
            columns: {
              country: true,
              latitude: true,
@@ -228,16 +228,37 @@ export const appRouter = router({
              }
              return and(...clauses);
            },
-           orderBy: (events, { desc }) => [desc(events.createdAt)],
-           limit: 600,
-         });
+            orderBy: (events, { desc }) => [desc(events.createdAt)],
+            limit: 600,
+          });
 
-         return {
-           daily,
-           dimensions,
-           geoPoints,
-         };
-       }),
+        const clauses = [
+          eq(rawEvent.siteId, siteRecord.id),
+          eq(rawEvent.type, "pageview"),
+          sql`coalesce(${rawEvent.normalized}->>'bot', 'false') != 'true'`,
+        ];
+        if (startDate) {
+          const startTimestamp = new Date(`${startDate}T00:00:00.000Z`).getTime();
+          clauses.push(gte(rawEvent.timestamp, startTimestamp));
+        }
+        if (endDate) {
+          const endTimestamp = new Date(`${endDate}T23:59:59.999Z`).getTime();
+          clauses.push(lte(rawEvent.timestamp, endTimestamp));
+        }
+        const rangeVisitors = await db
+          .select({
+            count: sql<number>`count(distinct ${rawEvent.visitorId})`,
+          })
+          .from(rawEvent)
+          .where(and(...clauses));
+
+        return {
+          daily,
+          dimensions,
+          geoPoints,
+          rangeVisitors: Number(rangeVisitors[0]?.count ?? 0),
+        };
+      }),
     visitorsNow: protectedProcedure
       .input(
         z.object({
@@ -260,7 +281,15 @@ export const appRouter = router({
             count: sql<number>`count(distinct ${rawEvent.visitorId})`,
           })
           .from(rawEvent)
-          .where(and(eq(rawEvent.siteId, siteRecord.id), gte(rawEvent.timestamp, cutoff)));
+          .where(
+            and(
+              eq(rawEvent.siteId, siteRecord.id),
+              gte(rawEvent.timestamp, cutoff),
+              lte(rawEvent.timestamp, Date.now()),
+              eq(rawEvent.type, "pageview"),
+              sql`coalesce(${rawEvent.normalized}->>'bot', 'false') != 'true'`,
+            ),
+          );
 
         return { count: Number(result?.count ?? 0) };
       }),

@@ -50,6 +50,7 @@ export type RollupData = {
   daily?: RollupDailyEntry[];
   dimensions?: RollupDimensionEntry[];
   geoPoints?: RollupGeoPoint[];
+  rangeVisitors?: number;
 };
 
 export type ChartDatum = {
@@ -185,10 +186,12 @@ export function useDashboardOverviewData(
     return totals;
   }, [dailyEntries]);
 
-  const visitorsTotal = useMemo(
-    () => dailyEntries.reduce((sum, entry) => sum + entry.visitors, 0),
-    [dailyEntries],
-  );
+  const visitorsTotal = useMemo(() => {
+    if (rollup?.rangeVisitors !== undefined && rollup?.rangeVisitors !== null) {
+      return toNumber(rollup.rangeVisitors);
+    }
+    return dailyEntries.reduce((sum, entry) => sum + entry.visitors, 0);
+  }, [dailyEntries, rollup?.rangeVisitors]);
 
   const goalsTotal = useMemo(
     () => dailyEntries.reduce((sum, entry) => sum + entry.goals, 0),

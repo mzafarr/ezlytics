@@ -52,7 +52,6 @@ import {
 } from "@/app/api/v1/ingest/geo";
 import {
   buildSessionMetrics,
-  createEmptyMetrics,
 } from "@/app/api/v1/ingest/metrics";
 
 const MAX_PAYLOAD_BYTES =
@@ -438,7 +437,7 @@ export const POST = async (request: NextRequest) => {
       }
     }
 
-    const sessionMetrics =
+    const sessionUpdates =
       payload.type === "pageview" && sessionId
         ? await buildSessionMetrics({
             db: tx,
@@ -447,7 +446,7 @@ export const POST = async (request: NextRequest) => {
             visitorId: payload.visitorId,
             eventTimestamp: sessionEventTimestamp,
           })
-        : createEmptyMetrics();
+        : [];
 
     await upsertRollups({
       db: tx,
@@ -455,12 +454,14 @@ export const POST = async (request: NextRequest) => {
       timestamp: rollupTimestamp,
       metrics,
     });
-    await upsertRollups({
-      db: tx,
-      siteId: authResult.siteId,
-      timestamp: rollupTimestamp,
-      metrics: sessionMetrics,
-    });
+    for (const update of sessionUpdates) {
+      await upsertRollups({
+        db: tx,
+        siteId: authResult.siteId,
+        timestamp: update.timestamp,
+        metrics: update.metrics,
+      });
+    }
 
     await upsertDimensionRollups({
       db: tx,

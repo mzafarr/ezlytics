@@ -175,6 +175,31 @@
     return parts.slice(-2).join(".");
   }
 
+  function hostnameMatchesDomain(hostname, domainValue) {
+    if (!hostname || !domainValue) {
+      return false;
+    }
+    return (
+      hostname === domainValue ||
+      hostname.slice(-domainValue.length - 1) === "." + domainValue
+    );
+  }
+
+  function resolveCookieDomain(value) {
+    var normalized = normalizeCookieDomain(value);
+    if (!normalized) {
+      return "";
+    }
+    if (typeof location === "undefined") {
+      return getRootDomain(normalized);
+    }
+    var hostname = location.hostname || "";
+    if (!hostnameMatchesDomain(hostname, normalized)) {
+      return "";
+    }
+    return getRootDomain(normalized);
+  }
+
   function hostnameAllowed(hostname, allowlist) {
     if (!allowlist || allowlist.length === 0) {
       return true;
@@ -272,7 +297,7 @@
   var VISITOR_TTL = 60 * 60 * 24 * 365;
   var SESSION_TTL = 60 * 30;
   var EVENT_ENDPOINT = normalizeApiUrl(apiUrlRaw, "/api/v1/ingest");
-  var COOKIE_DOMAIN = getRootDomain(normalizeCookieDomain(domain));
+  var COOKIE_DOMAIN = resolveCookieDomain(domain);
   var lastPath = null;
   var TRACKING_KEYS = [
     "ref",

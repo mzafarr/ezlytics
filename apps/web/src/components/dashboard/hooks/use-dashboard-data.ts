@@ -269,8 +269,9 @@ export function useDashboardData({
   }, [filters, exclusions, currentVisitorId]);
 
   const rollupSummary = useMemo(() => {
+    const rangeVisitors = rollupQuery.data?.rangeVisitors ?? null;
     const totals = {
-      visitors: 0,
+      visitors: rangeVisitors ?? 0,
       sessions: 0,
       pageviews: 0,
       goals: 0,
@@ -321,7 +322,6 @@ export function useDashboardData({
 
     for (const entry of rollupQuery.data?.daily ?? []) {
       const dateKey = toDateKey(entry.date);
-      totals.visitors += entry.visitors;
       totals.sessions += entry.sessions;
       totals.pageviews += entry.pageviews;
       totals.goals += entry.goals;
@@ -354,6 +354,12 @@ export function useDashboardData({
       bucket.revenue[label] = (bucket.revenue[label] ?? 0) + entry.revenue;
     }
 
+    if (rangeVisitors === null) {
+      totals.visitors = (rollupQuery.data?.daily ?? []).reduce(
+        (sum, entry) => sum + entry.visitors,
+        0,
+      );
+    }
     return { totals, series, dimensions };
   }, [rollupQuery.data]);
 

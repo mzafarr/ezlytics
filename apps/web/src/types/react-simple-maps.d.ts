@@ -9,6 +9,11 @@ declare module "react-simple-maps" {
   export type ComposableMapProps = {
     width?: number;
     height?: number;
+    projection?: string;
+    projectionConfig?: {
+      scale?: number;
+    };
+    translate?: [number, number];
     className?: string;
     children?: ReactNode;
   };
