@@ -137,12 +137,13 @@ The ingestion endpoint at `/api/v1/ingest` enforces a strict allowlist and caps.
 - GeoIP enrichment: set `GEOIP_MMDB_PATH` to a GeoLite2-City mmdb to resolve region/city/lat/lng
 - Supported schema versions: `v=1` (default when omitted)
 - Allowed top-level keys:
-  - `v`, `type`, `name`, `websiteId`, `domain`, `path`, `referrer`, `timestamp`, `visitorId`, `sessionId`, `eventId`, `metadata`
+  - `v`, `type`, `name`, `websiteId`, `domain`, `path`, `referrer`, `timestamp`, `visitorId`, `sessionId`, `eventId`, `metadata`, `bot`
   - `utm_source`, `utm_medium`, `utm_campaign`, `utm_term`, `utm_content`, `source`, `via`, `ref`
 - Required fields: `type`, `websiteId`, `domain`, `path`, `visitorId`
 - `goal` events must include `name`
 - `identify` events must include `metadata.user_id`
 - Authentication: `Authorization: Bearer <api_key>` required and must match the event `websiteId`
+- Server key: set `INGEST_SERVER_KEY` and send `x-ingest-server-key` (or `server_key` query param) to allow `bot` override.
 - Max metadata entries: 12
 - Metadata key max length: 64
 - Metadata value max length: 255

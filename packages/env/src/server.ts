@@ -12,6 +12,7 @@ export const env = createEnv({
     GOOGLE_CLIENT_ID: z.string().min(1).optional(),
     GOOGLE_CLIENT_SECRET: z.string().min(1).optional(),
     INGEST_MAX_PAYLOAD_BYTES: z.coerce.number().int().min(1024).optional(),
+    INGEST_SERVER_KEY: z.string().min(32).optional(),
     RAW_EVENT_RETENTION_DAYS: z.coerce.number().int().min(1).optional(),
     ROLLUP_DAILY_RETENTION_DAYS: z.coerce.number().int().min(1).optional(),
     ROLLUP_HOURLY_RETENTION_DAYS: z.coerce.number().int().min(1).optional(),
