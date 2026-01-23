@@ -14,6 +14,8 @@ const forwardHeaders = (request: NextRequest, body?: string) => {
   if (authorization) {
     headers.set("authorization", authorization);
   }
+  const userAgent = request.headers.get("user-agent") ?? "";
+  headers.set("user-agent", userAgent);
   return headers;
 };
 

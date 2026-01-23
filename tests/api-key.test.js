@@ -30,6 +30,7 @@ test("proxy endpoints expose script and events routes", () => {
   assert.ok(eventsRoute.includes("/api/v1/ingest"));
   assert.ok(eventsRoute.includes("authorization"));
   assert.ok(eventsRoute.includes("user-agent"));
+  assert.ok(eventsRoute.includes('get("user-agent") ?? ""'));
 });
 
 test("ingest rejects mismatched session ids", () => {
