@@ -44,30 +44,31 @@ test("ingest accepts a single session id", () => {
 });
 
 test("ingest coerces numeric ts strings", () => {
-  const ingestRoute = read("apps/web/src/app/api/v1/ingest/route.ts");
-  assert.ok(ingestRoute.includes("z.preprocess"));
-  assert.ok(ingestRoute.includes('typeof value === "string"'));
-  assert.ok(ingestRoute.includes("return Number(trimmed)"));
+  const ingestSchema = read("apps/web/src/app/api/v1/ingest/schema.ts");
+  assert.ok(ingestSchema.includes("z.preprocess"));
+  assert.ok(ingestSchema.includes('typeof value === "string"'));
+  assert.ok(ingestSchema.includes("return Number(trimmed)"));
 });
 
 test("ingest treats missing user-agent as non-bot", () => {
-  const ingestRoute = read("apps/web/src/app/api/v1/ingest/route.ts");
-  assert.ok(ingestRoute.includes("if (!value) {"));
-  assert.ok(ingestRoute.includes("return false;"));
+  const ingestNormalize = read("apps/web/src/app/api/v1/ingest/normalize.ts");
+  assert.ok(ingestNormalize.includes("if (!value) {"));
+  assert.ok(ingestNormalize.includes("return false;"));
 });
 
 test("ingest restricts bot flag to privileged requests", () => {
   const ingestRoute = read("apps/web/src/app/api/v1/ingest/route.ts");
+  const ingestNormalize = read("apps/web/src/app/api/v1/ingest/normalize.ts");
   assert.ok(ingestRoute.includes("payload.bot !== undefined"));
   assert.ok(ingestRoute.includes("Bot flag requires a server key"));
-  assert.ok(ingestRoute.includes("x-ingest-server-key"));
+  assert.ok(ingestNormalize.includes("x-ingest-server-key"));
   assert.ok(ingestRoute.includes("INGEST_SERVER_KEY"));
 });
 
 test("ingest defines MAX_BACKFILL_MS for 24h backfill window", () => {
-  const ingestRoute = read("apps/web/src/app/api/v1/ingest/route.ts");
-  assert.ok(ingestRoute.includes("MAX_BACKFILL_MS"));
-  assert.ok(ingestRoute.includes("24 * 60 * 60 * 1000"));
+  const ingestSchema = read("apps/web/src/app/api/v1/ingest/schema.ts");
+  assert.ok(ingestSchema.includes("MAX_BACKFILL_MS"));
+  assert.ok(ingestSchema.includes("24 * 60 * 60 * 1000"));
 });
 
 test("ingest rejects timestamps more than 24h in the past", () => {

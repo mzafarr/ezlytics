@@ -4,7 +4,7 @@
 
 **Project Structure (Monorepo):**
 
-- **Root**: Contains orchestration (`ralphy.sh`, `tasks.yaml`).
+- **Root**: Contains orchestration (`ralphy.sh`, `PRD.md`).
 - **App Code**: Lives in the `app/` subdirectory (Git submodule).
 - **Commands**: Always run build/install commands inside `app/` (e.g., `cd app && bun install`).
 
@@ -21,7 +21,7 @@ Read these files ONLY when relevant to your task:
 
 1. **Ignore Logs**: Never read `logs/` files for code context. They are outdated history.
 2. **Focus on app/**: All implementation happens in `app/`.
-3. **Update Tasks**: Mark items complete in `tasks.yaml` as you finish them.
+3. **Update Tasks**: Mark items complete in `PRD.md` as you finish them.
 
 # Rules
 

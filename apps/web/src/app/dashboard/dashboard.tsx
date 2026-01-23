@@ -18,14 +18,21 @@ import {
 import { type RollupTotals } from "./dashboard-helpers";
 import {
   TEST_CHART_DATA,
-  TEST_GEO_DOTS,
   TEST_STATS_DATA,
   TEST_TOP_REFERRERS,
   TEST_TOP_SOURCES,
   TEST_TOP_PAGES,
   TEST_TOP_COUNTRIES,
+  TEST_TOP_REGIONS,
+  TEST_TOP_CITIES,
   TEST_TOP_DEVICES,
   TEST_TOP_BROWSERS,
+  TEST_DIMENSION_VISITOR_TOTALS,
+  TEST_DIMENSION_REVENUE_TOTALS,
+  TEST_GEO_COUNTRY_TOTALS,
+  TEST_GEO_COUNTRY_REVENUE_TOTALS,
+  TEST_GEO_COUNTRY_GOAL_TOTALS,
+  TEST_GEO_COUNTRY_SESSION_TOTALS,
 } from "./test-data";
 import { useDashboardOverviewData } from "./use-dashboard-overview-data";
 
@@ -89,6 +96,12 @@ export default function Dashboard({
   const [activeDeviceTab, setActiveDeviceTab] = useState<"device" | "browser">(
     "device",
   );
+  const [activeGeoTab, setActiveGeoTab] = useState<
+    "map" | "country" | "region" | "city"
+  >("map");
+  const [geoSortBy, setGeoSortBy] = useState<"visitors" | "revenue">(
+    "visitors",
+  );
   const [showVisitorsSeries, setShowVisitorsSeries] = useState(true);
   const [showRevenueSeries, setShowRevenueSeries] = useState(true);
   const [useTestData, setUseTestData] = useState(false);
@@ -136,11 +149,22 @@ export default function Dashboard({
           topSources={TEST_TOP_SOURCES}
           topPages={TEST_TOP_PAGES}
           visibleCountries={TEST_TOP_COUNTRIES}
+          visibleRegions={TEST_TOP_REGIONS}
+          visibleCities={TEST_TOP_CITIES}
           visibleDevices={TEST_TOP_DEVICES}
           visibleBrowsers={TEST_TOP_BROWSERS}
-          geoDots={TEST_GEO_DOTS}
+          dimensionVisitorTotals={TEST_DIMENSION_VISITOR_TOTALS}
+          dimensionRevenueTotals={TEST_DIMENSION_REVENUE_TOTALS}
+          geoCountryTotals={TEST_GEO_COUNTRY_TOTALS}
+          geoCountryRevenueTotals={TEST_GEO_COUNTRY_REVENUE_TOTALS}
+          geoCountryGoalTotals={TEST_GEO_COUNTRY_GOAL_TOTALS}
+          geoCountrySessionTotals={TEST_GEO_COUNTRY_SESSION_TOTALS}
           activeDeviceTab={activeDeviceTab}
           onDeviceTabChange={(tab) => setActiveDeviceTab(tab)}
+          activeGeoTab={activeGeoTab}
+          onGeoTabChange={(tab) => setActiveGeoTab(tab)}
+          geoSortBy={geoSortBy}
+          onGeoSortChange={(sort) => setGeoSortBy(sort)}
           showVisitorsSeries={showVisitorsSeries}
           showRevenueSeries={showRevenueSeries}
           onToggleVisitors={() => setShowVisitorsSeries((current) => !current)}
@@ -208,11 +232,22 @@ export default function Dashboard({
           topSources={overviewData.topSources}
           topPages={overviewData.topPages}
           visibleCountries={overviewData.visibleCountries}
+          visibleRegions={overviewData.visibleRegions}
+          visibleCities={overviewData.visibleCities}
           visibleDevices={overviewData.visibleDevices}
           visibleBrowsers={overviewData.visibleBrowsers}
-          geoDots={overviewData.geoDots}
+          dimensionVisitorTotals={overviewData.dimensionVisitorTotals}
+          dimensionRevenueTotals={overviewData.dimensionRevenueTotals}
+          geoCountryTotals={overviewData.geoCountryTotals}
+          geoCountryRevenueTotals={overviewData.geoCountryRevenueTotals}
+          geoCountryGoalTotals={overviewData.geoCountryGoalTotals}
+          geoCountrySessionTotals={overviewData.geoCountrySessionTotals}
           activeDeviceTab={activeDeviceTab}
           onDeviceTabChange={(tab) => setActiveDeviceTab(tab)}
+          activeGeoTab={activeGeoTab}
+          onGeoTabChange={(tab) => setActiveGeoTab(tab)}
+          geoSortBy={geoSortBy}
+          onGeoSortChange={(sort) => setGeoSortBy(sort)}
           showVisitorsSeries={showVisitorsSeries}
           showRevenueSeries={showRevenueSeries}
           onToggleVisitors={() => setShowVisitorsSeries((current) => !current)}

@@ -28,3 +28,9 @@
 - [✓] 2026-01-21 13:38 - Replace geo placeholders with map and region/city 
 - [✓] 2026-01-21 14:02 - Replace geo placeholders with map and region/city 
 - [✓] 2026-01-21 14:05 - Replace geo placeholders with map and region/city 
+- [✓] 2026-01-22 15:29 - If both `sessionId` and `session_id` are present and differ, return 400 with a clear error field.
+- [✓] 2026-01-22 15:40 - If only one is present or both match, continue ingest normally.
+- [✓] 2026-01-22 15:47 - If only one is present or both match, continue ingest normally.
+- [✓] 2026-01-22 15:58 - Missing User-Agent does not automatically set `bot=true`.
+- [✓] 2026-01-22 16:36 - `bot` flag is only accepted for privileged/server-side requests (e.g., server key or server-only endpoint); untrusted use is rejected or ignored.
+- [✓] 2026-01-22 17:09 - Rollups include UA-less events unless flagged as bot via a privileged path.

@@ -18,22 +18,39 @@ export const MAP_LNG_LINES = [-120, -60, 0, 60, 120];
 
 const countryOverrides: Record<string, string> = {
   "United States of America": "United States",
+  "United States": "United States",
   "Dem. Rep. Congo": "Congo - Kinshasa",
+  "Congo - Kinshasa": "Congo - Kinshasa",
+  "Congo - Brazzaville": "Congo - Brazzaville",
   "Congo": "Congo - Brazzaville",
   "Côte d'Ivoire": "Cote d'Ivoire",
   "Côte d’Ivoire": "Cote d'Ivoire",
-  "South Korea": "Korea, Republic of",
-  "North Korea": "Korea, Democratic People's Republic of",
-  "Czechia": "Czech Republic",
-  "Myanmar": "Myanmar (Burma)",
-  "Vietnam": "Viet Nam",
-  "Laos": "Lao People's Democratic Republic",
-  "Bolivia": "Bolivia, Plurinational State of",
-  "Tanzania": "Tanzania, United Republic of",
-  "Iran": "Iran, Islamic Republic of",
-  "Syria": "Syrian Arab Republic",
-  "Venezuela": "Venezuela, Bolivarian Republic of",
-  "Brunei": "Brunei Darussalam",
+  "Cote d'Ivoire": "Cote d'Ivoire",
+  "South Korea": "South Korea",
+  "North Korea": "North Korea",
+  "Myanmar (Burma)": "Myanmar",
+  "Myanmar": "Myanmar",
+  "Viet Nam": "Vietnam",
+  "Vietnam": "Vietnam",
+  "Lao People's Democratic Republic": "Laos",
+  "Laos": "Laos",
+  "Bolivia, Plurinational State of": "Bolivia",
+  "Bolivia": "Bolivia",
+  "Tanzania, United Republic of": "Tanzania",
+  "Tanzania": "Tanzania",
+  "Iran, Islamic Republic of": "Iran",
+  "Iran": "Iran",
+  "Syrian Arab Republic": "Syria",
+  "Syria": "Syria",
+  "Venezuela, Bolivarian Republic of": "Venezuela",
+  "Venezuela": "Venezuela",
+  "Brunei Darussalam": "Brunei",
+  "Brunei": "Brunei",
+  "Russia": "Russia",
+  "United Kingdom": "United Kingdom",
+  "Germany": "Germany",
+  "Canada": "Canada",
+  "France": "France",
 };
 
 const formatCountryName = (value: string) => {
@@ -43,8 +60,6 @@ const formatCountryName = (value: string) => {
   }
   return countryOverrides[trimmed] ?? trimmed;
 };
-
-export const formatGeoLabel = (value: string) => formatCountryName(value);
 
 export const formatDimensionLabel = (value: string) => {
   const trimmed = value.trim();
@@ -103,6 +118,11 @@ export const normalizeCountryName = (value: string) => {
     }
   }
   return formatCountryName(trimmed);
+};
+
+export const formatGeoLabel = (value: string) => {
+  const normalized = normalizeCountryName(value);
+  return normalized || "Unknown";
 };
 
 export const slugifyLabel = (value: string) =>

@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 
 import { db, rollupDaily, rollupDimensionDaily, rollupDimensionHourly, rollupHourly, sql } from "@my-better-t-app/db";
 
+type DbLike = Pick<typeof db, "insert">;
+
 export type RollupMetrics = {
   visitors: number;
   sessions: number;
@@ -214,10 +216,12 @@ const toBucketDate = (timestamp: Date) =>
 const safeTimestamp = (value: Date) => (Number.isNaN(value.getTime()) ? new Date() : value);
 
 export const upsertRollups = async ({
+  db: dbLike = db,
   siteId,
   timestamp,
   metrics,
 }: {
+  db?: DbLike;
   siteId: string;
   timestamp: Date;
   metrics: RollupMetrics;
@@ -231,7 +235,7 @@ export const upsertRollups = async ({
   const bucketDate = toBucketDate(resolvedTimestamp);
   const hour = resolvedTimestamp.getUTCHours();
 
-  await db
+  await dbLike
     .insert(rollupHourly)
     .values({
       id: randomUUID(),
@@ -267,7 +271,7 @@ export const upsertRollups = async ({
       },
     });
 
-  await db
+  await dbLike
     .insert(rollupDaily)
     .values({
       id: randomUUID(),
@@ -387,11 +391,13 @@ export const extractDimensionRollups = ({
 };
 
 export const upsertDimensionRollups = async ({
+  db: dbLike = db,
   siteId,
   timestamp,
   metrics,
   dimensions,
 }: {
+  db?: DbLike;
   siteId: string;
   timestamp: Date;
   metrics: RollupMetrics;
@@ -412,7 +418,7 @@ export const upsertDimensionRollups = async ({
       continue;
     }
 
-    await db
+    await dbLike
       .insert(rollupDimensionHourly)
       .values({
         id: randomUUID(),
@@ -452,7 +458,7 @@ export const upsertDimensionRollups = async ({
         },
       });
 
-    await db
+    await dbLike
       .insert(rollupDimensionDaily)
       .values({
         id: randomUUID(),

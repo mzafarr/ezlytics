@@ -37,6 +37,7 @@ export const rawEvent = pgTable(
   (table) => [
     index("raw_event_siteId_idx").on(table.siteId),
     index("raw_event_site_timestamp_idx").on(table.siteId, table.timestamp),
+    index("raw_event_created_at_idx").on(table.createdAt),
     index("raw_event_visitorId_idx").on(table.visitorId),
     index("raw_event_sessionId_idx").on(table.sessionId),
     index("raw_event_type_idx").on(table.type),
