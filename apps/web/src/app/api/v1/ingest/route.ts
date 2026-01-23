@@ -17,7 +17,12 @@ import {
 } from "@my-better-t-app/db";
 import { env } from "@my-better-t-app/env/server";
 import { sanitizeMetadataRecord } from "@/lib/metadata-sanitize";
-import { extractDimensionRollups, metricsForEvent, upsertDimensionRollups, upsertRollups } from "@/lib/rollups";
+import {
+  extractDimensionRollups,
+  metricsForEvent,
+  upsertDimensionRollups,
+  upsertRollups,
+} from "@/lib/rollups";
 import { checkRateLimit, getClientIp } from "@/lib/rate-limit";
 
 const DEFAULT_MAX_PAYLOAD_BYTES = 32 * 1024;
@@ -29,6 +34,7 @@ const MAX_METADATA_KEY_LENGTH = 64;
 const MAX_METADATA_VALUE_LENGTH = 255;
 const MAX_FUTURE_EVENT_MS = 24 * 60 * 60 * 1000;
 const MAX_CLIENT_TS_SKEW_MS = 5 * 60 * 1000;
+const MAX_BACKFILL_MS = 24 * 60 * 60 * 1000;
 
 const ALLOWED_TOP_LEVEL_KEYS = new Set([
   "v",
@@ -267,7 +273,9 @@ const normalizeDomain = (value: string) => {
     return "";
   }
   try {
-    const parsed = new URL(trimmed.startsWith("http") ? trimmed : `https://${trimmed}`);
+    const parsed = new URL(
+      trimmed.startsWith("http") ? trimmed : `https://${trimmed}`,
+    );
     return parsed.hostname.toLowerCase();
   } catch (error) {
     return trimmed.split("/")[0] || "";
@@ -360,7 +368,13 @@ const normalizeTrackingValue = (value?: string) => {
 };
 
 const toBucketDate = (timestamp: Date) =>
-  new Date(Date.UTC(timestamp.getUTCFullYear(), timestamp.getUTCMonth(), timestamp.getUTCDate()))
+  new Date(
+    Date.UTC(
+      timestamp.getUTCFullYear(),
+      timestamp.getUTCMonth(),
+      timestamp.getUTCDate(),
+    ),
+  )
     .toISOString()
     .slice(0, 10);
 
@@ -379,17 +393,42 @@ const resolveEventTimestamp = (payload: { ts?: number; timestamp?: Date }) => {
       clientTimestamp: null,
       clockSkewMs: null,
       usedClientTimestamp: false,
+      rejection: null as "past" | "future" | null,
     };
   }
   const skew = candidate - nowMs;
-  const withinSkew = Math.abs(skew) <= MAX_CLIENT_TS_SKEW_MS;
-  const eventDate = new Date(withinSkew ? candidate : nowMs);
+  // Reject if more than 24h in the past
+  if (skew < -MAX_BACKFILL_MS) {
+    return {
+      eventDate: new Date(nowMs),
+      serverDate: new Date(nowMs),
+      clientTimestamp: candidate,
+      clockSkewMs: skew,
+      usedClientTimestamp: false,
+      rejection: "past" as const,
+    };
+  }
+  // Reject if more than 5 minutes in the future
+  if (skew > MAX_CLIENT_TS_SKEW_MS) {
+    return {
+      eventDate: new Date(nowMs),
+      serverDate: new Date(nowMs),
+      clientTimestamp: candidate,
+      clockSkewMs: skew,
+      usedClientTimestamp: false,
+      rejection: "future" as const,
+    };
+  }
+  // Within acceptable window: use client time for rollups
+  // This covers: past up to 24h OR future up to 5min
+  const eventDate = new Date(candidate);
   return {
     eventDate,
     serverDate: new Date(nowMs),
     clientTimestamp: candidate,
     clockSkewMs: skew,
-    usedClientTimestamp: withinSkew,
+    usedClientTimestamp: true,
+    rejection: null as "past" | "future" | null,
   };
 };
 
@@ -422,7 +461,11 @@ const buildSessionMetrics = async ({
       pageviews: 1,
     })
     .onConflictDoNothing({
-      target: [analyticsSession.siteId, analyticsSession.sessionId, analyticsSession.visitorId],
+      target: [
+        analyticsSession.siteId,
+        analyticsSession.sessionId,
+        analyticsSession.visitorId,
+      ],
     })
     .returning({ id: analyticsSession.id });
 
@@ -552,7 +595,11 @@ const getHeaderValue = (headers: Headers, keys: string[]) => {
   return null;
 };
 
-const parseCoordinateHeader = (value: string | null, min: number, max: number) => {
+const parseCoordinateHeader = (
+  value: string | null,
+  min: number,
+  max: number,
+) => {
   if (!value) {
     return null;
   }
@@ -763,8 +810,8 @@ export const POST = async (request: NextRequest) => {
   );
   const hasPrivilegedBotAccess = Boolean(
     env.INGEST_SERVER_KEY &&
-      ingestServerKey &&
-      ingestServerKey === env.INGEST_SERVER_KEY,
+    ingestServerKey &&
+    ingestServerKey === env.INGEST_SERVER_KEY,
   );
   const authResult = await verifyApiKey(
     headerAuth || buildApiKeyHeader(queryKey),
@@ -983,6 +1030,35 @@ export const POST = async (request: NextRequest) => {
   const longitude = maxmindGeo?.longitude ?? geoFromHeaders.longitude ?? null;
 
   const timestampInfo = resolveEventTimestamp(payload);
+
+  // Reject timestamps outside acceptable window
+  if (timestampInfo.rejection === "past") {
+    return withCors(
+      NextResponse.json(
+        {
+          error: "Invalid request",
+          details: { ts: ["Client timestamp is more than 24h in the past"] },
+          allowlist: ALLOWLIST_DOCS,
+        },
+        { status: 400 },
+      ),
+    );
+  }
+  if (timestampInfo.rejection === "future") {
+    return withCors(
+      NextResponse.json(
+        {
+          error: "Invalid request",
+          details: {
+            ts: ["Client timestamp is more than 5 minutes in the future"],
+          },
+          allowlist: ALLOWLIST_DOCS,
+        },
+        { status: 400 },
+      ),
+    );
+  }
+
   const normalized = {
     url: normalizeUrl(payload.path),
     path: normalizeUrl(payload.path),
@@ -1068,7 +1144,11 @@ export const POST = async (request: NextRequest) => {
           visitorId: payload.visitorId,
         })
         .onConflictDoNothing({
-          target: [visitorDaily.siteId, visitorDaily.date, visitorDaily.visitorId],
+          target: [
+            visitorDaily.siteId,
+            visitorDaily.date,
+            visitorDaily.visitorId,
+          ],
         })
         .returning({ id: visitorDaily.id });
       if (inserted.length > 0) {

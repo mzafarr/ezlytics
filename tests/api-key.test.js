@@ -63,3 +63,19 @@ test("ingest restricts bot flag to privileged requests", () => {
   assert.ok(ingestRoute.includes("x-ingest-server-key"));
   assert.ok(ingestRoute.includes("INGEST_SERVER_KEY"));
 });
+
+test("ingest defines MAX_BACKFILL_MS for 24h backfill window", () => {
+  const ingestRoute = read("apps/web/src/app/api/v1/ingest/route.ts");
+  assert.ok(ingestRoute.includes("MAX_BACKFILL_MS"));
+  assert.ok(ingestRoute.includes("24 * 60 * 60 * 1000"));
+});
+
+test("ingest rejects timestamps more than 24h in the past", () => {
+  const ingestRoute = read("apps/web/src/app/api/v1/ingest/route.ts");
+  assert.ok(ingestRoute.includes("more than 24h in the past"));
+});
+
+test("ingest rejects timestamps more than 5 minutes in the future", () => {
+  const ingestRoute = read("apps/web/src/app/api/v1/ingest/route.ts");
+  assert.ok(ingestRoute.includes("more than 5 minutes in the future"));
+});
