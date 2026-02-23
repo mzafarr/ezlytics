@@ -165,8 +165,8 @@ Retention defaults are applied during event ingestion and webhook processing:
 
 The tracking script sets first-party cookies to recognize returning visitors and sessions:
 
-- `datafast_visitor_id`: persistent visitor identifier (expires after 1 year)
-- `datafast_session_id`: session identifier (expires after 30 minutes of inactivity)
+- `ezlytics_visitor_id`: persistent visitor identifier (expires after 1 year)
+- `ezlytics_session_id`: session identifier (expires after 30 minutes of inactivity)
 
 ### Suggested cookie banner wording
 
@@ -202,8 +202,8 @@ export async function POST(
 
   const session = event.data.object as Stripe.Checkout.Session;
   const metadata = session.metadata ?? {};
-  const visitorId = metadata.datafast_visitor_id;
-  const sessionId = metadata.datafast_session_id;
+  const visitorId = metadata.ezlytics_visitor_id;
+  const sessionId = metadata.ezlytics_session_id;
 
   // Forward to your analytics ingestion endpoint or use the built-in handler.
   await fetch(`${process.env.ANALYTICS_ORIGIN}/api/webhooks/stripe/${websiteId}`, {
@@ -244,9 +244,9 @@ app.post("/stripe/webhook", express.raw({ type: "application/json" }), async (re
   }
 
   const session = event.data.object as Stripe.Checkout.Session;
-  const { datafast_visitor_id, datafast_session_id } = session.metadata ?? {};
+  const { ezlytics_visitor_id, ezlytics_session_id } = session.metadata ?? {};
 
-  await fetch(`${process.env.ANALYTICS_ORIGIN}/api/webhooks/stripe/${process.env.DATAFAST_WEBSITE_ID}`, {
+  await fetch(`${process.env.ANALYTICS_ORIGIN}/api/webhooks/stripe/${process.env.EZLYTICS_WEBSITE_ID}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
@@ -255,7 +255,7 @@ app.post("/stripe/webhook", express.raw({ type: "application/json" }), async (re
     }),
   });
 
-  return res.json({ ok: true, visitorId: datafast_visitor_id, sessionId: datafast_session_id });
+  return res.json({ ok: true, visitorId: ezlytics_visitor_id, sessionId: ezlytics_session_id });
 });
 ```
 
@@ -280,8 +280,8 @@ export async function POST(
     payload?.data?.attributes?.custom_data ??
     payload?.data?.attributes?.custom ??
     {};
-  const visitorId = custom.datafast_visitor_id;
-  const sessionId = custom.datafast_session_id;
+  const visitorId = custom.ezlytics_visitor_id;
+  const sessionId = custom.ezlytics_session_id;
 
   await fetch(`${process.env.ANALYTICS_ORIGIN}/api/webhooks/lemonsqueezy/${websiteId}`, {
     method: "POST",
@@ -308,15 +308,15 @@ app.post("/lemonsqueezy/webhook", express.json(), async (req, res) => {
     payload?.data?.attributes?.custom_data ??
     payload?.data?.attributes?.custom ??
     {};
-  const { datafast_visitor_id, datafast_session_id } = custom;
+  const { ezlytics_visitor_id, ezlytics_session_id } = custom;
 
-  await fetch(`${process.env.ANALYTICS_ORIGIN}/api/webhooks/lemonsqueezy/${process.env.DATAFAST_WEBSITE_ID}`, {
+  await fetch(`${process.env.ANALYTICS_ORIGIN}/api/webhooks/lemonsqueezy/${process.env.EZLYTICS_WEBSITE_ID}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(payload),
   });
 
-  return res.json({ ok: true, visitorId: datafast_visitor_id, sessionId: datafast_session_id });
+  return res.json({ ok: true, visitorId: ezlytics_visitor_id, sessionId: ezlytics_session_id });
 });
 ```
 

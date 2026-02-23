@@ -152,10 +152,10 @@ export const POST = async (
     parseCustomData(payload.custom_data) ??
     parseCustomData(payload.custom);
 
-  const visitorId = customData ? getString(customData.datafast_visitor_id) : "";
+  const visitorId = customData ? getString(customData.ezlytics_visitor_id) : "";
   if (!visitorId) {
     return NextResponse.json(
-      { error: "datafast_visitor_id is required in LemonSqueezy custom fields" },
+      { error: "ezlytics_visitor_id is required in LemonSqueezy custom fields" },
       { status: 400 },
     );
   }
@@ -170,7 +170,7 @@ export const POST = async (
   }
 
 
-  const sessionId = customData ? getString(customData.datafast_session_id) : "";
+  const sessionId = customData ? getString(customData.ezlytics_session_id) : "";
   const transactionId =
     getString(attributes.order_number) ||
     getString(attributes.identifier) ||

@@ -94,11 +94,11 @@ const metadataSchema = z
   .optional();
 
 const bodySchema = z.object({
-  datafast_visitor_id: z
+  ezlytics_visitor_id: z
     .string()
     .trim()
-    .min(1, "datafast_visitor_id is required")
-    .max(128, "datafast_visitor_id is too long"),
+    .min(1, "ezlytics_visitor_id is required")
+    .max(128, "ezlytics_visitor_id is too long"),
   name: nameSchema,
   event_id: z.string().trim().min(1).max(128).optional(),
   metadata: metadataSchema,
@@ -157,7 +157,7 @@ export const POST = async (request: NextRequest) => {
     );
   }
 
-  const visitorId = parsed.data.datafast_visitor_id;
+  const visitorId = parsed.data.ezlytics_visitor_id;
   const idempotencyHeader = request.headers.get("x-idempotency-key");
   const eventId = parsed.data.event_id ?? idempotencyHeader?.trim() ?? "";
   if (!eventId) {

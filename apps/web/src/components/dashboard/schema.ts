@@ -1,11 +1,11 @@
 import z from "zod";
 
-export const storageKeyFunnels = "datafast.funnels";
-export const storageKeyExclusions = "datafast.exclusions";
-export const storageKeyPrimaryGoal = "datafast.primaryGoal";
-export const storageKeyDemoVisitorId = "datafast.demoVisitorId";
-export const storageKeySavedViews = "datafast.savedViews";
-export const storageKeyFilters = "datafast.filters";
+export const storageKeyFunnels = "ezlytics.funnels";
+export const storageKeyExclusions = "ezlytics.exclusions";
+export const storageKeyPrimaryGoal = "ezlytics.primaryGoal";
+export const storageKeyDemoVisitorId = "ezlytics.demoVisitorId";
+export const storageKeySavedViews = "ezlytics.savedViews";
+export const storageKeyFilters = "ezlytics.filters";
 export const defaultDemoVisitorId = "visitor-1";
 
 export const directReferrerLabel = "(direct)";

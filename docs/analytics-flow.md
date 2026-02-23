@@ -78,4 +78,4 @@ If a user closes the tab or switches to another tab:
 - **`pageview`**: Sent automatically on page load and SPA navigations (intercepting history.pushState).
 - **`heartbeat`**: Sent every 30 seconds while the page is visible.
 - **`goal`**: Sent when a user triggers a tracked action (e.g., clicking a button with `data-fast-goal="signup"`).
-- **`identify`**: Sent manually via `window.datafast("identify", {...})` to attach user data (like an email) to their visitor ID.
+- **`identify`**: Sent manually via `window.ezlytics("identify", {...})` to attach user data (like an email) to their visitor ID.

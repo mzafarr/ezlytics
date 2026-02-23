@@ -144,9 +144,9 @@ export const POST = async (
   const goalEventId = `${eventId}:goal`;
 
   const metadata = isRecord(eventObject.metadata) ? eventObject.metadata : {};
-  const visitorId = getString(metadata.datafast_visitor_id);
+  const visitorId = getString(metadata.ezlytics_visitor_id);
   if (!visitorId) {
-    return NextResponse.json({ error: "datafast_visitor_id is required in metadata" }, { status: 400 });
+    return NextResponse.json({ error: "ezlytics_visitor_id is required in metadata" }, { status: 400 });
   }
 
   const siteRecord = await db.query.site.findFirst({
@@ -159,7 +159,7 @@ export const POST = async (
   }
 
 
-  const sessionId = getString(metadata.datafast_session_id);
+  const sessionId = getString(metadata.ezlytics_session_id);
   const transactionId = getString(eventObject.payment_intent) || getString(eventObject.id);
   const amount = parseAmount(eventObject.amount_total);
   const currency = getString(eventObject.currency).toLowerCase();

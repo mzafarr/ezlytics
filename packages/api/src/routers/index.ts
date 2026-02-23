@@ -430,7 +430,7 @@ export const appRouter = router({
                 .where(
                   and(
                     eq(rawEvent.siteId, siteRecord.id),
-                    sql`${rawEvent.type} in ('pageview', 'heartbeat')`,
+                    eq(rawEvent.type, "pageview"),
                     gte(rawEvent.timestamp, visitorsNowCutoff),
                     lte(rawEvent.timestamp, nowTimestamp),
                     sql`coalesce(${rawEvent.normalized}->>'bot', 'false') != 'true'`,
@@ -695,7 +695,7 @@ export const appRouter = router({
             .where(
               and(
                 eq(rawEvent.siteId, siteRecord.id),
-                sql`${rawEvent.type} in ('pageview', 'heartbeat')`,
+                eq(rawEvent.type, "pageview"),
                 gte(rawEvent.timestamp, cutoff),
                 lte(rawEvent.timestamp, nowTimestamp),
                 sql`coalesce(${rawEvent.normalized}->>'bot', 'false') != 'true'`,

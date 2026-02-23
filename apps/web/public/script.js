@@ -255,16 +255,16 @@
     }
   }
 
-  var existing = window.datafast;
+  var existing = window.ezlytics;
   var queue = [];
   if (typeof existing === "function" && existing.q) {
     queue = existing.q;
   }
-  var datafast = function () {
+  var ezlytics = function () {
     queue.push(arguments);
   };
-  datafast.q = queue;
-  window.datafast = datafast;
+  ezlytics.q = queue;
+  window.ezlytics = ezlytics;
 
   var config = {
     websiteId: websiteId,
@@ -278,7 +278,7 @@
   if (apiUrlRaw) {
     config.apiUrl = apiUrlRaw;
   }
-  window.datafast.config = config;
+  window.ezlytics.config = config;
 
   function isDoNotTrackEnabled() {
     if (typeof navigator === "undefined") {
@@ -297,14 +297,14 @@
 
   if (isDoNotTrackEnabled()) {
     warn("Do Not Track is enabled: tracking disabled.");
-    window.datafast = function () {};
-    window.datafast.q = [];
-    window.datafast.config = config;
+    window.ezlytics = function () {};
+    window.ezlytics.q = [];
+    window.ezlytics.config = config;
     return;
   }
 
-  var VISITOR_COOKIE = "datafast_visitor_id";
-  var SESSION_COOKIE = "datafast_session_id";
+  var VISITOR_COOKIE = "ezlytics_visitor_id";
+  var SESSION_COOKIE = "ezlytics_session_id";
   var VISITOR_TTL = 60 * 60 * 24 * 365;
   var SESSION_TTL = 60 * 30;
   var EVENT_ENDPOINT = normalizeApiUrl(
@@ -1014,7 +1014,7 @@
     startHeartbeatLoop();
   }
 
-  function handleDatafastCommand(args) {
+  function handleEzlyticsCommand(args) {
     if (!args || args.length === 0) {
       return;
     }
@@ -1024,16 +1024,16 @@
     }
   }
 
-  function installDatafastHandler() {
-    window.datafast = function () {
-      handleDatafastCommand(arguments);
+  function installEzlyticsHandler() {
+    window.ezlytics = function () {
+      handleEzlyticsCommand(arguments);
     };
-    window.datafast.q = queue;
+    window.ezlytics.q = queue;
     if (!queue || queue.length === 0) {
       return;
     }
     for (var i = 0; i < queue.length; i += 1) {
-      handleDatafastCommand(queue[i]);
+      handleEzlyticsCommand(queue[i]);
     }
     queue.length = 0;
   }
@@ -1130,5 +1130,5 @@
     }
   }
 
-  installDatafastHandler();
+  installEzlyticsHandler();
 })();
