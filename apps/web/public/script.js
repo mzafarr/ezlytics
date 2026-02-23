@@ -32,7 +32,7 @@
     if (!srcUrl) return "";
     try {
       var parsed = new URL(srcUrl);
-      return parsed.origin + "/api/v1/ingest";
+      return parsed.origin + "/p";
     } catch (e) {
       return "";
     }
@@ -309,7 +309,7 @@
   var SESSION_TTL = 60 * 30;
   var EVENT_ENDPOINT = normalizeApiUrl(
     apiUrlRaw,
-    deriveApiUrl(scriptSrc) || "/api/v1/ingest",
+    deriveApiUrl(scriptSrc) || "/p",
   );
   var COOKIE_DOMAIN = resolveCookieDomain(domain);
   var lastPath = null;
@@ -553,46 +553,43 @@
   function sendEvent(payload, options, attempt) {
     var attemptCount = attempt || 0;
     var body = JSON.stringify(payload);
+
+    // Build the target URL with api_key as a query param (used by both paths)
+    var targetUrl = EVENT_ENDPOINT;
+    if (apiKey) {
+      var joiner = targetUrl.indexOf("?") === -1 ? "?" : "&";
+      targetUrl = targetUrl + joiner + "api_key=" + encodeURIComponent(apiKey);
+    }
+
+    // sendBeacon: text/plain is a CORS-safelisted content type → no preflight
     if (typeof navigator !== "undefined" && navigator.sendBeacon) {
       try {
         var blob = new Blob([body], { type: "text/plain" });
-        var beaconUrl = EVENT_ENDPOINT;
-        if (apiKey) {
-          var joiner = beaconUrl.indexOf("?") === -1 ? "?" : "&";
-          beaconUrl =
-            beaconUrl + joiner + "api_key=" + encodeURIComponent(apiKey);
-        }
-        if (navigator.sendBeacon(beaconUrl, blob)) {
+        if (navigator.sendBeacon(targetUrl, blob)) {
           return;
         }
       } catch (error) {
         // fall through to fetch
       }
     }
+
+    // fetch fallback: no-cors mode = no preflight, no Authorization header needed
+    // api_key is in the URL, response is opaque (fire-and-forget, no retry)
     if (typeof fetch === "function") {
       try {
-        fetch(EVENT_ENDPOINT, {
+        fetch(targetUrl, {
           method: "POST",
-          headers: {
-            "Content-Type": "text/plain",
-            Authorization: "Bearer " + apiKey,
-          },
+          headers: { "Content-Type": "text/plain" },
           body: body,
+          mode: "no-cors",
           keepalive: options && options.keepalive === true,
-        })
-          .then(function (response) {
-            if (!response || !response.ok) {
-              queueRetry(payload, options, attemptCount);
-            }
-          })
-          .catch(function () {
-            queueRetry(payload, options, attemptCount);
-          });
+        }).catch(function () {
+          // silent fail — no-cors gives opaque response, can't retry meaningfully
+        });
         return;
       } catch (error) {
-        queueRetry(payload, options, attemptCount);
+        // ignore
       }
-      return;
     }
     queueRetry(payload, options, attemptCount);
   }
