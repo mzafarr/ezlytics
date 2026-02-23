@@ -555,7 +555,7 @@
     var body = JSON.stringify(payload);
     if (typeof navigator !== "undefined" && navigator.sendBeacon) {
       try {
-        var blob = new Blob([body], { type: "application/json" });
+        var blob = new Blob([body], { type: "text/plain" });
         var beaconUrl = EVENT_ENDPOINT;
         if (apiKey) {
           var joiner = beaconUrl.indexOf("?") === -1 ? "?" : "&";
@@ -574,7 +574,7 @@
         fetch(EVENT_ENDPOINT, {
           method: "POST",
           headers: {
-            "Content-Type": "application/json",
+            "Content-Type": "text/plain",
             Authorization: "Bearer " + apiKey,
           },
           body: body,
