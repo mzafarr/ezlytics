@@ -6,10 +6,7 @@ const nextConfig: NextConfig = {
   reactCompiler: true,
   transpilePackages: ["shiki"],
   async rewrites() {
-    return [
-      { source: "/js/script.js", destination: "/script.js" },
-      { source: "/api/events", destination: "/api/v1/ingest" },
-    ];
+    return [{ source: "/js/script.js", destination: "/script.js" }];
   },
 };
 

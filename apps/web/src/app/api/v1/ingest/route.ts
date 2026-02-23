@@ -125,6 +125,17 @@ export const OPTIONS = () => {
 };
 
 export const POST = async (request: NextRequest) => {
+  try {
+    return await handlePost(request);
+  } catch (error) {
+    console.error("[ingest] unhandled error", error);
+    return withCors(
+      NextResponse.json({ error: "Internal server error" }, { status: 500 }),
+    );
+  }
+};
+
+const handlePost = async (request: NextRequest) => {
   const lengthHeader = request.headers.get("content-length");
   if (lengthHeader) {
     const length = Number.parseInt(lengthHeader, 10);
