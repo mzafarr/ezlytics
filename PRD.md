@@ -1,113 +1,145 @@
-# PRD: Ingest Quality & Consistency Hardening
+# PRD: Analytics Metrics Correctness & Validation
 
 ## Introduction
 
-The ingest pipeline needs additional quality controls and structural cleanup beyond the initial transactional and DoS fixes. This PRD covers remaining validation/policy decisions (session ID conflicts, backfill timestamps, UA handling, `ts` coercion), a dedupe-safe insert pattern inside transactions, minimal modularization for maintainability, and a simple rollup rebuild job for correctness while the product has zero users and a wipe/rebuild is acceptable.
-
-## Current Context
-
-- Product has 0 users.
-- It is acceptable to wipe and rebuild DB state if needed.
+Fix correctness of core analytics metrics (visitors, visitors now, sessions, bounce rate, avg session duration, geo, dimension rollups, idempotency) and add automated validation (tests + reconciliation) so reported numbers are trustworthy.
 
 ## Goals
 
-- Ensure deterministic handling of ambiguous or invalid payloads (session ID conflicts, timestamp skew, UA-less events).
-- Improve data accuracy for delayed/offline events with explicit backfill policy.
-- Make deduplication reliable inside transactions without aborted commits.
-- Enable fast, safe rollup rebuilds without complex ledger infrastructure (v0 stage).
-- Improve maintainability via minimal modularization without changing external behavior.
+- Align metric definitions with common analytics standards.
+- Make rollups deterministic and consistent with raw events.
+- Exclude bot traffic consistently across real-time and rollups.
+- Prevent duplicate counting on retries and webhook replays.
+- Add automated tests and reconciliation to prove correctness.
 
 ## User Stories
 
-### US-001: Ingest behavior hardening (validation + dedupe)
-
-**Description:** As a system owner, I want unambiguous validation and safe deduplication so analytics are correct and transactions don't fail.
+### US-001: Publish metric definitions
+**Description:** As a developer, I want clear metric definitions so all code and tests use the same rules.
 
 **Acceptance Criteria:**
-
-- [x] If both `sessionId` and `session_id` are present and differ, return 400 with a clear error field.
-- [x] If only one is present or both match, continue ingest normally.
-- [x] Missing User-Agent does not automatically set `bot=true`.
-- [x] `bot` flag is only accepted for privileged/server-side requests (e.g., server key or server-only endpoint); untrusted use is rejected or ignored.
-- [x] Rollups include UA-less events unless flagged as bot via a privileged path.
-- [x] `ts` accepts numeric strings and coerces to integer; non-numeric strings still return 400.
-- [x] Use `onConflictDoNothing` with `returning()` on `(site_id, event_id)` to detect dedupe without throwing.
-- [x] If deduped, return `{ ok: true, deduped: true }` without attempting rollups.
-- [x] No unique-violation exceptions are used for normal dedupe flow.
+- [x] Add `docs/analytics-metrics-spec.md` defining: visitor (daily), visitor (range), visitors now, session, bounce, avg session duration, session attribution to day/hour, bot exclusion.
+- [x] Definitions include at least 3 worked examples with expected numbers.
 - [x] Typecheck/lint passes.
 
-### US-002: Allow past backfill up to 24h using client time
-
-**Description:** As a user with offline clients, I want delayed events (<= 24h in the past) to count in the correct historical buckets without allowing future time shifts.
-
-**Acceptance Criteria:**
-
-- [ ] If client timestamp is in the past and within 24h, use client time for rollups.
-- [ ] If client timestamp is more than 24h in the past, reject with 400 and an explicit error message.
-- [ ] If client timestamp is more than 5 minutes in the future, reject with 400 and an explicit error message.
-- [ ] If client timestamp is within the 5-minute future skew window, use client time (existing behavior).
-- [ ] No response shape changes; optionally include debug-only logging/metrics for backfill usage.
-- [ ] Typecheck/lint passes.
-
-### US-003: Modularize ingest handler (minimal split)
-
-**Description:** As a maintainer, I want the ingest route split into logical modules to reduce complexity and improve testability.
+### US-002: Fix visitors now query
+**Description:** As a user, I want “visitors now” to reflect active humans, not bots or background events.
 
 **Acceptance Criteria:**
+- [x] Count distinct `visitor_id` from **pageview** events only.
+- [x] Exclude bot events (normalized.bot = true).
+- [x] Use event timestamp window: last 5 minutes, timestamp <= now.
+- [x] Unit test covers bot exclusion + non-pageview exclusion.
+- [x] Typecheck/lint passes.
 
-- [x] Extract schemas/constants to `ingest/schema.ts`.
-- [x] Extract normalization helpers to `ingest/normalize.ts`.
-- [x] Extract geo resolution to `ingest/geo.ts`.
-- [x] Extract metrics/session helpers to `ingest/metrics.ts`.
-- [x] `route.ts` becomes orchestration only.
-- [ ] Typecheck/lint passes.
-
-### US-004: Add rollup rebuild job (v0, destructive allowed)
-
-**Description:** As an operator, I want a simple way to rebuild rollups from raw events while there are no users.
+### US-003: Fix visitors for date range
+**Description:** As a user, I want “visitors” for a range to be unique across the whole range.
 
 **Acceptance Criteria:**
+- [x] Range visitors = distinct visitor_id across start/end (inclusive), pageviews only, bots excluded.
+- [x] Dashboard uses range-unique visitor count for “Visitors”.
+- [x] Add query (or computed field) to return range-unique visitors.
+- [x] Integration test verifies range-unique vs sum-of-daily difference.
+- [x] Typecheck/lint passes.
 
-- [x] Provide a rebuild job that can truncate rollup tables and recompute from raw events for a time window.
-- [x] Job can run for a single site or all sites.
-- [x] Job has a dry-run mode that reports counts without writing.
-- [ ] Typecheck/lint passes.
+### US-004: Session metrics attributed to session start
+**Description:** As a user, I want bounce rate and session duration to be accurate for the day/hour the session started.
+
+**Acceptance Criteria:**
+- [x] Session start = first pageview timestamp for (site_id, session_id, visitor_id).
+- [x] Bounce = exactly 1 pageview in session.
+- [x] Avg session duration = (last_ts - first_ts) averaged across sessions.
+- [x] Session rollup deltas (sessions, bouncedSessions, duration) are bucketed to session **start** day/hour.
+- [x] Rollup rebuild logic matches live ingest behavior.
+- [x] Unit tests cover single-pageview, two-pageview, cross-day, out-of-order events.
+- [x] Typecheck/lint passes.
+
+### US-005: Dimension sessions by session start context
+**Description:** As a user, I want geo/device/browser conversion rates to use correct session counts.
+
+**Acceptance Criteria:**
+- [x] Session dimension context = normalized values from first pageview of session.
+- [x] Dimension rollups for country/region/city/device/browser increment sessions based on session start context.
+- [x] Dimension rollup rebuild uses same rules.
+- [x] Geo conversion rate uses dimension session totals (not pageviews fallback).
+- [x] Typecheck/lint passes.
+
+### US-006: Fix geo points date filtering
+**Description:** As a user, I want map points to respect the selected date range.
+
+**Acceptance Criteria:**
+- [x] Geo points filter uses event timestamp (not createdAt).
+- [x] End date is inclusive (end-of-day).
+- [x] Bot events excluded.
+- [x] Integration test validates date range boundaries.
+- [x] Typecheck/lint passes.
+
+### US-007: Idempotent goals/payments
+**Description:** As an operator, I want retries to never double-count revenue or goals.
+
+**Acceptance Criteria:**
+- [x] Goals endpoint requires an idempotency key (event_id) or uses a deterministic key.
+- [x] Payments endpoint dedupes using transaction_id (or event_id).
+- [x] Raw events for goal/payment use event_id for unique constraint.
+- [x] Retries return ok without changing rollups.
+- [x] Typecheck/lint passes.
+
+### US-008: Automated validation and reconciliation
+**Description:** As an operator, I want automated proof that rollups match raw events.
+
+**Acceptance Criteria:**
+- [x] Add golden datasets for ingest and expected rollups.
+- [x] Add property-based test: live ingest rollups == rebuild rollups for same events.
+- [x] Add reconciliation job/endpoint that diffs rollups vs raw_event rebuild (dry-run allowed).
+- [x] CI fails on mismatch.
+- [x] Typecheck/lint passes.
+
+### US-009: Clarify metric definitions in UI
+**Description:** As a user, I want the dashboard to explain what each KPI means.
+
+**Acceptance Criteria:**
+- [x] “Visitors” and “Visitors now” show tooltip with definition from spec.
+- [x] Bounce rate and Avg session duration show definition tooltip.
+- [x] Typecheck/lint passes.
+- [ ] Verify in browser using dev-browser skill.
 
 ## Functional Requirements
 
-1. Reject payloads when `sessionId` and `session_id` both exist and differ.
-2. Do not classify missing User-Agent as bot; restrict `bot` flag to privileged/server-side requests.
-3. Coerce `ts` numeric strings to integer timestamps.
-4. Implement dedupe-safe insert using `onConflictDoNothing` and `returning()`.
-5. Accept past backfill events up to 24h and bucket to client timestamp; reject older than 24h.
-6. Reject future timestamps beyond a 5-minute skew window.
-7. Split ingest route into schema/normalize/geo/metrics modules with identical behavior.
-8. Add a rollup rebuild job that can truncate and recompute rollups from raw events (v0 approach).
+- FR-1: Range visitors must be unique across the full range (pageview-only, bots excluded).
+- FR-2: Visitors now must be distinct pageview visitors in last 5 minutes, bots excluded.
+- FR-3: Session metrics must be attributed to session start day/hour.
+- FR-4: Dimension session rollups must use session start context (country/region/city/device/browser).
+- FR-5: Geo point filters must use event timestamp and inclusive end date.
+- FR-6: Goals/payments must be idempotent and deduped.
+- FR-7: Rollup rebuild must match live ingest logic.
+- FR-8: Automated tests + reconciliation must guard correctness.
 
-## Non-Goals
+## Non-Goals (Out of Scope)
 
-- No changes to public reporting/UI in this scope.
-- No new analytics dimensions beyond existing ones.
-- No major refactor of non-ingest API routes.
+- Multi-touch attribution or marketing modeling.
+- Real-time streaming UI beyond current “visitors now”.
+- Currency conversion or multi-currency reporting changes.
+- Rewriting the entire dashboard UI.
 
 ## Design Considerations (Optional)
 
-- Keep new ingest modules colocated under `apps/web/src/app/api/v1/ingest/`.
-- Provide a short README or module docstring explaining responsibilities.
+- Add small tooltip icons next to KPI labels for definitions.
+- Reuse existing tooltip component and styles.
 
 ## Technical Considerations (Optional)
 
-- Rebuild job can be a CLI script or scheduled API route; must avoid full-table scans in hot paths.
-- Backfill error responses should be explicit and machine-readable.
-- Dedupe should avoid exception-driven control flow inside transactions (use conflict-free insert).
+- May require storing session start context (e.g., JSON) in `analytics_session`.
+- May require new query or table for range-unique visitors (e.g., `visitor_daily` distinct).
+- Ensure rollup rebuild reuses exact same metric logic as ingest.
+- Add SQL filters for `normalized.bot` (JSON) where needed.
 
 ## Success Metrics
 
-- <0.1% of ingest requests rejected due to ambiguous session IDs after client updates.
-- Rollup rebuild can run on demand and completes within acceptable time for 7-day windows.
-- Reduced operator time spent on manual rollup fixes during v0.
+- Reconciliation job shows 0 drift for golden datasets and staging.
+- Automated tests cover all edge cases listed in US-004.
+- No regression in dashboard performance for default ranges.
 
 ## Open Questions
 
-- Should the rebuild job be triggered manually (admin-only) or via cron during v0?
-- Should backfill events be counted in revenue rollups with the same policy?
+- Do we want to surface both “unique across range” and “sum of daily” in UI for transparency?
+- Should hourly unique visitors be explicitly supported if we add hourly charts later?

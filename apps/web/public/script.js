@@ -27,6 +27,16 @@
     ? script.getAttribute("data-allowed-hostnames")
     : "";
   var apiUrlRaw = script ? script.getAttribute("data-api-url") : "";
+  var scriptSrc = script ? script.src || "" : "";
+  function deriveApiUrl(srcUrl) {
+    if (!srcUrl) return "";
+    try {
+      var parsed = new URL(srcUrl);
+      return parsed.origin + "/api/events";
+    } catch (e) {
+      return "";
+    }
+  }
 
   function warn(message) {
     if (disableConsole) {
@@ -39,7 +49,7 @@
 
   if (!websiteId || !domain || !apiKey) {
     warn(
-      "Tracking disabled: missing required data-website-id, data-domain, or data-api-key on the script tag."
+      "Tracking disabled: missing required data-website-id, data-domain, or data-api-key on the script tag.",
     );
     return;
   }
@@ -89,9 +99,7 @@
 
   function isLocalhost(hostname) {
     return (
-      hostname === "localhost" ||
-      hostname === "127.0.0.1" ||
-      hostname === "::1"
+      hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1"
     );
   }
 
@@ -215,7 +223,10 @@
         }
         continue;
       }
-      if (hostname === entry || hostname.slice(-entry.length - 1) === "." + entry) {
+      if (
+        hostname === entry ||
+        hostname.slice(-entry.length - 1) === "." + entry
+      ) {
         return true;
       }
     }
@@ -296,7 +307,10 @@
   var SESSION_COOKIE = "datafast_session_id";
   var VISITOR_TTL = 60 * 60 * 24 * 365;
   var SESSION_TTL = 60 * 30;
-  var EVENT_ENDPOINT = normalizeApiUrl(apiUrlRaw, "/api/v1/ingest");
+  var EVENT_ENDPOINT = normalizeApiUrl(
+    apiUrlRaw,
+    deriveApiUrl(scriptSrc) || "/api/events",
+  );
   var COOKIE_DOMAIN = resolveCookieDomain(domain);
   var lastPath = null;
   var TRACKING_KEYS = [
@@ -313,8 +327,10 @@
   var RETRY_LIMIT = 3;
   var RETRY_BASE_DELAY = 1000;
   var RETRY_MAX_DELAY = 15000;
+  var HEARTBEAT_INTERVAL_MS = 30000;
   var retryQueue = [];
   var retryTimer = null;
+  var heartbeatTimer = null;
 
   function isSecureContext() {
     return typeof location !== "undefined" && location.protocol === "https:";
@@ -454,9 +470,7 @@
       return crypto.randomUUID();
     }
     return (
-      "df_" +
-      Math.random().toString(16).slice(2) +
-      Date.now().toString(16)
+      "df_" + Math.random().toString(16).slice(2) + Date.now().toString(16)
     );
   }
 
@@ -545,7 +559,8 @@
         var beaconUrl = EVENT_ENDPOINT;
         if (apiKey) {
           var joiner = beaconUrl.indexOf("?") === -1 ? "?" : "&";
-          beaconUrl = beaconUrl + joiner + "api_key=" + encodeURIComponent(apiKey);
+          beaconUrl =
+            beaconUrl + joiner + "api_key=" + encodeURIComponent(apiKey);
         }
         if (navigator.sendBeacon(beaconUrl, blob)) {
           return;
@@ -813,7 +828,7 @@
       warn(
         'Invalid scroll goal name "' +
           rawName +
-          '". Scroll goal names must be lowercase letters, numbers, underscores, or hyphens and at most 64 characters.'
+          '". Scroll goal names must be lowercase letters, numbers, underscores, or hyphens and at most 64 characters.',
       );
       return "";
     }
@@ -915,7 +930,7 @@
       warn(
         'Invalid goal name "' +
           rawName +
-          '". Goal names must be lowercase letters, numbers, underscores, or hyphens and at most 64 characters.'
+          '". Goal names must be lowercase letters, numbers, underscores, or hyphens and at most 64 characters.',
       );
       return;
     }
@@ -946,6 +961,57 @@
       }
     }
     sendEvent(payload, { keepalive: true });
+  }
+
+  function sendHeartbeat() {
+    if (
+      typeof document !== "undefined" &&
+      document.visibilityState === "hidden"
+    ) {
+      return;
+    }
+    var now = Date.now();
+    var payload = {
+      type: "heartbeat",
+      websiteId: websiteId,
+      eventId: generateId(),
+      domain: domain,
+      path: getCurrentPath(),
+      referrer: document.referrer || "",
+      ts: now,
+      timestamp: new Date(now).toISOString(),
+      visitorId: getVisitorId(),
+      session_id: getSessionId(),
+    };
+    sendEvent(payload, { keepalive: false });
+  }
+
+  function stopHeartbeatLoop() {
+    if (!heartbeatTimer) {
+      return;
+    }
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
+
+  function startHeartbeatLoop() {
+    if (heartbeatTimer) {
+      return;
+    }
+    heartbeatTimer = setInterval(function () {
+      sendHeartbeat();
+    }, HEARTBEAT_INTERVAL_MS);
+  }
+
+  function syncHeartbeatLoop() {
+    if (typeof document === "undefined") {
+      return;
+    }
+    if (document.visibilityState === "hidden") {
+      stopHeartbeatLoop();
+      return;
+    }
+    startHeartbeatLoop();
   }
 
   function handleDatafastCommand(args) {
@@ -984,6 +1050,7 @@
 
   lastPath = getCurrentPath();
   sendPageview(document.referrer || "");
+  syncHeartbeatLoop();
 
   if (typeof history !== "undefined") {
     var originalPushState = history.pushState;
@@ -1005,10 +1072,12 @@
 
   if (typeof window !== "undefined" && window.addEventListener) {
     window.addEventListener("popstate", handleRouteChange);
+    window.addEventListener("beforeunload", stopHeartbeatLoop);
   }
 
   if (typeof document !== "undefined" && document.addEventListener) {
     document.addEventListener("click", handleGoalClick, true);
+    document.addEventListener("visibilitychange", syncHeartbeatLoop);
   }
 
   if (
@@ -1028,10 +1097,10 @@
         return;
       }
       var thresholdValue = parseScrollThreshold(
-        element.getAttribute("data-fast-scroll-threshold")
+        element.getAttribute("data-fast-scroll-threshold"),
       );
       var delayValue = parseScrollDelay(
-        element.getAttribute("data-fast-scroll-delay")
+        element.getAttribute("data-fast-scroll-delay"),
       );
       var metadata = getGoalMetadata(element);
       var scrollObserver = new IntersectionObserver(
@@ -1050,7 +1119,7 @@
             scheduleScrollGoal(name, metadata, delayValue);
           }
         },
-        { root: null, threshold: thresholdValue }
+        { root: null, threshold: thresholdValue },
       );
       scrollObserver.observe(element);
     }

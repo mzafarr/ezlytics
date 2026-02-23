@@ -29,6 +29,9 @@ test("proxy endpoints expose script and events routes", () => {
   const eventsRoute = read("apps/web/src/app/api/events/route.ts");
   assert.ok(eventsRoute.includes("/api/v1/ingest"));
   assert.ok(eventsRoute.includes("authorization"));
+  assert.ok(eventsRoute.includes("origin"));
+  assert.ok(eventsRoute.includes("referer"));
+  assert.ok(eventsRoute.includes("x-ingest-server-key"));
   assert.ok(eventsRoute.includes("user-agent"));
   assert.ok(eventsRoute.includes('get("user-agent") ?? ""'));
 });
@@ -65,6 +68,15 @@ test("ingest restricts bot flag to privileged requests", () => {
   assert.ok(ingestRoute.includes("INGEST_SERVER_KEY"));
 });
 
+test("ingest requires trusted origin/referrer unless server key is provided", () => {
+  const ingestRoute = read("apps/web/src/app/api/v1/ingest/route.ts");
+  const ingestNormalize = read("apps/web/src/app/api/v1/ingest/normalize.ts");
+  assert.ok(ingestNormalize.includes("extractDomainFromHeaderUrl"));
+  assert.ok(ingestRoute.includes("Origin not allowed for this site"));
+  assert.ok(ingestRoute.includes("Referer not allowed for this site"));
+  assert.ok(ingestRoute.includes("Origin or Referer header required"));
+});
+
 test("ingest defines MAX_BACKFILL_MS for 24h backfill window", () => {
   const ingestSchema = read("apps/web/src/app/api/v1/ingest/schema.ts");
   assert.ok(ingestSchema.includes("MAX_BACKFILL_MS"));
@@ -79,4 +91,22 @@ test("ingest rejects timestamps more than 24h in the past", () => {
 test("ingest rejects timestamps more than 5 minutes in the future", () => {
   const ingestRoute = read("apps/web/src/app/api/v1/ingest/route.ts");
   assert.ok(ingestRoute.includes("more than 5 minutes in the future"));
+});
+
+test("goals endpoint requires idempotency key and dedupes by event id", () => {
+  const goalsRoute = read("apps/web/src/app/api/v1/goals/route.ts");
+  assert.ok(goalsRoute.includes("x-idempotency-key"));
+  assert.ok(goalsRoute.includes("event_id is required"));
+  assert.ok(goalsRoute.includes("onConflictDoNothing"));
+  assert.ok(goalsRoute.includes("deduped"));
+});
+
+test("payments endpoint dedupes by site+transaction and raw event ids", () => {
+  const paymentsRoute = read("apps/web/src/app/api/v1/payments/route.ts");
+  const paymentSchema = read("packages/db/src/schema/payment.ts");
+  assert.ok(paymentsRoute.includes("payment.transactionId"));
+  assert.ok(paymentsRoute.includes("paymentEventId"));
+  assert.ok(paymentsRoute.includes("goalEventId"));
+  assert.ok(paymentsRoute.includes("deduped"));
+  assert.ok(paymentSchema.includes("payment_site_transaction_unique_idx"));
 });

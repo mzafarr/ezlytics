@@ -12,6 +12,7 @@ import {
   toNumber,
   type DailyEntry,
 } from "./dashboard-helpers";
+import { type DashboardChartGranularity } from "./overview-time-range";
 
 export type RollupRevenueByType = {
   new?: number;
@@ -123,6 +124,14 @@ export type DashboardOverviewData = {
   geoCountrySessionTotals: Record<string, number>;
 };
 
+type UseDashboardOverviewDataOptions = {
+  range?: {
+    startDate: string;
+    endDate: string;
+  } | null;
+  granularity?: DashboardChartGranularity;
+};
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object";
 
@@ -147,13 +156,38 @@ const getTopEntries = (
     .sort((left, right) => right[1] - left[1])
     .slice(0, limit);
 
+const toDateKey = (value: string | number | Date) => {
+  if (value instanceof Date) {
+    return formatDateKey(value);
+  }
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return formatDateKey(new Date(value));
+  }
+  const raw = String(value).trim();
+  if (!raw) {
+    return "";
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return raw;
+  }
+  if (/^\d{4}-\d{2}-\d{2}T/.test(raw)) {
+    return raw.slice(0, 10);
+  }
+  const parsed = new Date(raw);
+  if (!Number.isNaN(parsed.getTime())) {
+    return formatDateKey(parsed);
+  }
+  return raw.slice(0, 10);
+};
+
 export function useDashboardOverviewData(
   rollup?: RollupData | null,
+  options?: UseDashboardOverviewDataOptions,
 ): DashboardOverviewData {
-  const dailyEntries = useMemo<DailyEntry[]>(() => {
+  const rawDailyEntries = useMemo<DailyEntry[]>(() => {
     return (rollup?.daily ?? [])
       .map((entry) => ({
-        date: String(entry.date),
+        date: toDateKey(entry.date),
         visitors: toNumber(entry.visitors),
         sessions: toNumber(entry.sessions),
         goals: toNumber(entry.goals),
@@ -162,8 +196,24 @@ export function useDashboardOverviewData(
         durationMs: toNumber(entry.avgSessionDurationMs),
         revenueByType: normalizeRevenueByType(entry.revenueByType),
       }))
+      .filter((entry) => entry.date.length === 10)
       .sort((left, right) => left.date.localeCompare(right.date));
   }, [rollup?.daily]);
+
+  const dailyEntries = useMemo<DailyEntry[]>(() => {
+    const startDate = options?.range?.startDate;
+    const endDate = options?.range?.endDate;
+    if (!startDate || !endDate) {
+      return rawDailyEntries;
+    }
+    return rawDailyEntries.filter(
+      (entry) => entry.date >= startDate && entry.date <= endDate,
+    );
+  }, [
+    options?.range?.endDate,
+    options?.range?.startDate,
+    rawDailyEntries,
+  ]);
 
   const revenueTotals = useMemo(() => {
     const totals = { total: 0, new: 0, renewal: 0, refund: 0 };
@@ -217,77 +267,138 @@ export function useDashboardOverviewData(
       : Math.round(sessionTotals.durationMs / sessionTotals.sessions);
 
   const chartData = useMemo<ChartDatum[]>(() => {
-    if (dailyEntries.length === 0) {
-      return [];
-    }
+    const granularity = options?.granularity ?? "daily";
     const entryMap = new Map(dailyEntries.map((entry) => [entry.date, entry]));
+
+    const explicitStart = options?.range?.startDate
+      ? parseDateKey(options.range.startDate)
+      : null;
+    const explicitEnd = options?.range?.endDate
+      ? parseDateKey(options.range.endDate)
+      : null;
+
     const parsedDates = dailyEntries
       .map((entry) => parseDateKey(entry.date))
       .filter((value): value is Date => Boolean(value));
-    if (parsedDates.length === 0) {
+
+    const start =
+      explicitStart ??
+      (parsedDates.length > 0
+        ? parsedDates.reduce((min, value) => (value < min ? value : min))
+        : null);
+    const end =
+      explicitEnd ??
+      (parsedDates.length > 0
+        ? parsedDates.reduce((max, value) => (value > max ? value : max))
+        : null);
+
+    if (!start || !end || start > end) {
       return [];
     }
-    const latest = parsedDates.reduce((max, value) =>
-      value > max ? value : max,
-    );
-    const earliest = parsedDates.reduce((min, value) =>
-      value < min ? value : min,
-    );
-    const dayMs = 24 * 60 * 60 * 1000;
-    const diffDays = Math.round(
-      (latest.getTime() - earliest.getTime()) / dayMs,
-    );
-    const dayCount = Math.max(30, diffDays + 1);
-    const start = new Date(
-      Date.UTC(
-        latest.getUTCFullYear(),
-        latest.getUTCMonth(),
-        latest.getUTCDate(),
-      ),
-    );
-    start.setUTCDate(start.getUTCDate() - (dayCount - 1));
 
-    const data: ChartDatum[] = [];
-    for (let index = 0; index < dayCount; index += 1) {
-      const date = new Date(start);
-      date.setUTCDate(start.getUTCDate() + index);
-      const dateKey = formatDateKey(date);
+    type ChartBucket = {
+      date: string;
+      visitors: number;
+      revenue: number;
+      sessions: number;
+      goals: number;
+      revenueNew: number;
+      revenueRenewal: number;
+      revenueRefund: number;
+    };
+
+    const dailyBuckets: ChartBucket[] = [];
+    const cursor = new Date(start);
+    while (cursor <= end) {
+      const dateKey = formatDateKey(cursor);
       const entry = entryMap.get(dateKey);
       const visitors = entry?.visitors ?? 0;
       const revenue = entry?.revenue ?? 0;
       const sessions = entry?.sessions ?? 0;
       const goals = entry?.goals ?? 0;
-      const revenuePerVisitorForDay = visitors === 0 ? 0 : revenue / visitors;
-      const conversionRateForDay =
-        sessions === 0 ? 0 : (goals / sessions) * 100;
-      // If we have revenueByType breakdown, use it; otherwise use full revenue as "new"
+      const revenueRefund = toNumber(entry?.revenueByType?.refund);
       const hasBreakdown =
         entry?.revenueByType &&
         (entry.revenueByType.new ||
           entry.revenueByType.refund ||
           entry.revenueByType.renewal);
-      const revenueRefund = toNumber(entry?.revenueByType?.refund);
       const revenueNew = hasBreakdown
         ? toNumber(entry?.revenueByType?.new)
-        : revenue - revenueRefund; // Full revenue minus any refunds
+        : revenue - revenueRefund;
 
-      data.push({
+      dailyBuckets.push({
         date: dateKey,
-        dateLabel: date.toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-        }),
         visitors,
         revenue,
+        sessions,
+        goals,
         revenueNew,
         revenueRenewal: toNumber(entry?.revenueByType?.renewal),
         revenueRefund,
-        revenuePerVisitor: revenuePerVisitorForDay,
-        conversionRate: conversionRateForDay,
       });
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
     }
-    return data;
-  }, [dailyEntries]);
+
+    const toChartDatum = (bucket: ChartBucket) => ({
+      date: bucket.date,
+      dateLabel: new Date(`${bucket.date}T00:00:00.000Z`).toLocaleDateString(
+        "en-US",
+        {
+          month: "short",
+          day: "numeric",
+        },
+      ),
+      visitors: bucket.visitors,
+      revenue: bucket.revenue,
+      revenueNew: bucket.revenueNew,
+      revenueRenewal: bucket.revenueRenewal,
+      revenueRefund: bucket.revenueRefund,
+      revenuePerVisitor:
+        bucket.visitors === 0 ? 0 : bucket.revenue / bucket.visitors,
+      conversionRate:
+        bucket.sessions === 0 ? 0 : (bucket.goals / bucket.sessions) * 100,
+    });
+
+    if (granularity === "daily") {
+      return dailyBuckets.map(toChartDatum);
+    }
+
+    const weeklyMap = new Map<string, ChartBucket>();
+    for (const bucket of dailyBuckets) {
+      const bucketDate = new Date(`${bucket.date}T00:00:00.000Z`);
+      const day = bucketDate.getUTCDay();
+      const mondayOffset = (day + 6) % 7;
+      bucketDate.setUTCDate(bucketDate.getUTCDate() - mondayOffset);
+      const weekKey = formatDateKey(bucketDate);
+      const existing = weeklyMap.get(weekKey);
+      if (!existing) {
+        weeklyMap.set(weekKey, { ...bucket, date: weekKey });
+        continue;
+      }
+      existing.visitors += bucket.visitors;
+      existing.revenue += bucket.revenue;
+      existing.sessions += bucket.sessions;
+      existing.goals += bucket.goals;
+      existing.revenueNew += bucket.revenueNew;
+      existing.revenueRenewal += bucket.revenueRenewal;
+      existing.revenueRefund += bucket.revenueRefund;
+    }
+
+    return Array.from(weeklyMap.values())
+      .sort((left, right) => left.date.localeCompare(right.date))
+      .map((bucket) => {
+        const datum = toChartDatum(bucket);
+        return {
+          ...datum,
+          dateLabel: `Wk ${datum.dateLabel}`,
+        };
+      });
+  }, [
+    dailyEntries,
+    options?.granularity,
+    options?.range?.endDate,
+    options?.range?.startDate,
+  ]);
 
   const metricDeltas = useMemo(() => {
     if (dailyEntries.length < 2) {

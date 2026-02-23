@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDown, ArrowUp, Check } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, Info } from "lucide-react";
 import { Area, AreaChart, ResponsiveContainer } from "recharts";
 
 import { cn } from "@/lib/utils";
@@ -35,6 +35,7 @@ const data = [
 
 interface StatCardProps {
   title: string;
+  description?: string;
   value: string;
   change?: string;
   trend?: "up" | "down";
@@ -48,6 +49,7 @@ interface StatCardProps {
 
 function StatCard({
   title,
+  description,
   value,
   change,
   trend,
@@ -67,7 +69,7 @@ function StatCard({
           >
             <span
               className={cn(
-                "flex h-4 w-4 items-center justify-center rounded-[4px] border border-border/60",
+                "flex h-4 w-4 items-center justify-center rounded-none border border-border border-2",
                 toggle.enabled ? "" : "opacity-50",
               )}
               style={{
@@ -82,16 +84,33 @@ function StatCard({
             <span className={cn(toggle.enabled ? "text-foreground" : "")}>
               {title}
             </span>
+            {description ? (
+              <span
+                className="inline-flex"
+                title={description}
+                aria-label={description}
+              >
+                <Info className="h-3.5 w-3.5 text-muted-foreground" />
+              </span>
+            ) : null}
           </button>
         ) : (
-          <span className="text-xs font-medium text-muted-foreground">
+          <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
             {title}
+            {description ? (
+              <span
+                className="inline-flex"
+                title={description}
+                aria-label={description}
+              >
+                <Info className="h-3.5 w-3.5 text-muted-foreground" />
+              </span>
+            ) : null}
           </span>
         )}
         {title === "Visitors now" && (
           <div className="relative flex h-2 w-2">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-sky-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2 w-2 bg-sky-500"></span>
+            <span className="relative inline-flex rounded-none h-2 w-2 bg-sky-500 border border-foreground"></span>
           </div>
         )}
       </div>
@@ -196,6 +215,17 @@ const formatCurrencyCompact = (value?: number) => {
   return `$${formatted}`;
 };
 
+const metricDefinitions: Record<string, string> = {
+  Visitors:
+    "Unique visitors across the selected date range based on pageviews only; bots are excluded.",
+  "Visitors now":
+    "Unique visitors with a pageview in the last 5 minutes where event time is not in the future.",
+  "Bounce rate":
+    "Percent of sessions with exactly one pageview. Sessions are attributed to the first pageview time.",
+  "Avg session":
+    "Average of (last pageview time - first pageview time) per session, attributed to session start.",
+};
+
 export function StatsRow({ dashboardData, tooltips, controls }: StatsRowProps) {
   const deltas = (dashboardData as any)?.deltas ?? {};
   const formatDelta = (value?: number) => {
@@ -220,11 +250,12 @@ export function StatsRow({ dashboardData, tooltips, controls }: StatsRowProps) {
   } = dashboardData as any;
 
   return (
-    <div className="rounded-2xl border border-border/60 bg-card/90 px-4 py-4 shadow-sm">
+    <div className="rounded-none border-2 border-foreground bg-white px-4 py-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
       <div className="grid grid-cols-2 gap-y-6 lg:grid-cols-7 lg:divide-x lg:divide-border/50">
         <div className="lg:px-3">
           <StatCard
             title="Visitors"
+            description={metricDefinitions.Visitors}
             value={formatCompact(visitorsCount)}
             change={formatDelta(deltas.visitors)}
             trend={resolveTrend(deltas.visitors)}
@@ -242,6 +273,7 @@ export function StatsRow({ dashboardData, tooltips, controls }: StatsRowProps) {
         <div className="lg:px-3">
           <StatCard
             title="Visitors now"
+            description={metricDefinitions["Visitors now"]}
             value={formatCompact(visitorsNowCount)}
             change="--"
             trend="up"
@@ -284,6 +316,7 @@ export function StatsRow({ dashboardData, tooltips, controls }: StatsRowProps) {
         <div className="lg:px-3">
           <StatCard
             title="Bounce rate"
+            description={metricDefinitions["Bounce rate"]}
             value={`${bounceRate?.toFixed(1) ?? "0.0"}%`}
             change={formatDelta(deltas.bounceRate)}
             trend={resolveTrend(deltas.bounceRate)}
@@ -292,6 +325,7 @@ export function StatsRow({ dashboardData, tooltips, controls }: StatsRowProps) {
         <div className="lg:px-3">
           <StatCard
             title="Avg session"
+            description={metricDefinitions["Avg session"]}
             value={formatDuration(avgSessionDurationMs ?? 0)}
             change={formatDelta(deltas.avgSessionDurationMs)}
             trend={resolveTrend(deltas.avgSessionDurationMs)}

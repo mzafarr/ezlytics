@@ -27,9 +27,9 @@ type MainChartDatum = {
 };
 
 const formatCurrency = (value: number) => `$${value.toLocaleString()}`;
-const visitorsColor = "var(--chart-2)";
-const revenueColor = "var(--chart-1)";
-const revenueRefundColor = "var(--chart-4)";
+const visitorsColor = "#38b6ff"; // secondary blue
+const revenueColor = "#ff914d"; // orange
+const revenueRefundColor = "#ff5757"; // red
 
 // Custom shape for refund bar - transparent fill with dashed border (no bottom)
 const RefundBarShape = (props: any) => {
@@ -91,13 +91,11 @@ const RevenueBarShape = (props: any) => {
     );
   }
 
-  // Rounded top corners
+  // Square top corners
   const path = `
     M ${x} ${y + height}
-    L ${x} ${y + r}
-    Q ${x} ${y} ${x + r} ${y}
-    L ${x + width - r} ${y}
-    Q ${x + width} ${y} ${x + width} ${y + r}
+    L ${x} ${y}
+    L ${x + width} ${y}
     L ${x + width} ${y + height}
     Z
   `;
@@ -175,7 +173,7 @@ const CustomTooltip = ({ active, payload }: CustomTooltipProps) => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div
-                className="w-3 h-3 rounded-[2px]"
+                className="w-3 h-3 rounded-none"
                 style={{ backgroundColor: visitorsColor }}
               ></div>
               <span className="text-foreground font-medium text-sm">
@@ -202,7 +200,7 @@ const CustomTooltip = ({ active, payload }: CustomTooltipProps) => {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <div
-                        className="w-3 h-3 rounded-[2px]"
+                        className="w-3 h-3 rounded-none"
                         style={{ backgroundColor: revenueColor }}
                       ></div>
                       <span className="text-foreground font-medium text-sm">
@@ -217,7 +215,7 @@ const CustomTooltip = ({ active, payload }: CustomTooltipProps) => {
                 {revenueRefund > 0 ? (
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <div className="w-3 h-3 rounded-[2px] border border-dashed border-foreground/50" />
+                      <div className="w-3 h-3 rounded-none border border-dashed border-foreground/50" />
                       <span className="text-foreground font-medium text-sm">
                         Refunds
                       </span>
@@ -271,7 +269,7 @@ export function MainChart({
   const hasSeries = showVisitors || showRevenue;
 
   return (
-    <Card className="col-span-4 bg-card/90 border-border/60 shadow-sm rounded-2xl">
+    <Card className="col-span-4 bg-white border-2 border-foreground shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] rounded-none">
       <CardHeader className="pb-2"></CardHeader>
       <CardContent className="pl-0">
         {isEmpty ? (
@@ -409,10 +407,10 @@ export function MainChart({
                     type="monotone"
                     dataKey="visitors"
                     stroke={visitorsColor}
-                    strokeWidth={3}
+                    strokeWidth={4}
                     fillOpacity={1}
                     fill="url(#colorVisitors)"
-                    filter={`drop-shadow(0 0 8px ${visitorsColor})`}
+                    filter="none"
                   />
                 ) : null}
               </ComposedChart>

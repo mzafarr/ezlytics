@@ -47,6 +47,22 @@ export const isDomainAllowed = (eventDomain: string, siteDomain: string) => {
   return eventDomain.endsWith(`.${siteDomain}`);
 };
 
+export const extractDomainFromHeaderUrl = (value: string | null) => {
+  if (!value) {
+    return "";
+  }
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === "null") {
+    return "";
+  }
+  try {
+    const parsed = new URL(trimmed);
+    return normalizeDomain(parsed.hostname);
+  } catch (error) {
+    return normalizeDomain(trimmed);
+  }
+};
+
 export const botSignatures = [
   "bot",
   "crawler",
@@ -177,8 +193,19 @@ export const resolveEventTimestamp = (payload: {
       rejection: "future" as const,
     };
   }
-  // Within acceptable window: use client time for rollups
-  // This covers: past up to 24h OR future up to 5min
+  // For slight client clock drift in the future, clamp to server-now so
+  // "visitors now" windows remain consistent with just-ingested events.
+  if (skew > 0) {
+    return {
+      eventDate: new Date(nowMs),
+      serverDate: new Date(nowMs),
+      clientTimestamp: candidate,
+      clockSkewMs: skew,
+      usedClientTimestamp: false,
+      rejection: null as "past" | "future" | null,
+    };
+  }
+  // Within acceptable past window: use client time for backfilled rollups.
   const eventDate = new Date(candidate);
   return {
     eventDate,

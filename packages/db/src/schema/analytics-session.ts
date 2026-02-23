@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm";
-import { bigint, index, integer, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { bigint, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 import { site } from "./site";
 
@@ -14,6 +14,7 @@ export const analyticsSession = pgTable(
     visitorId: text("visitor_id").notNull(),
     firstTimestamp: bigint("first_timestamp", { mode: "number" }).notNull(),
     lastTimestamp: bigint("last_timestamp", { mode: "number" }).notNull(),
+    firstNormalized: jsonb("first_normalized"),
     pageviews: integer("pageviews").default(0).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },

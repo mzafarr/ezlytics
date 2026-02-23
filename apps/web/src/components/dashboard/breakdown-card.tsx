@@ -27,12 +27,7 @@ export function BreakdownCard({
   metricLabel = "Visitors",
 }: BreakdownCardProps) {
   return (
-    <Card
-      className={cn(
-        "bg-card border-border shadow-sm h-full",
-        className,
-      )}
-    >
+    <Card className={cn("bg-card border-border shadow-sm h-full", className)}>
       <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
         <div className="flex items-center gap-2">
           {icon}
@@ -53,7 +48,7 @@ export function BreakdownCard({
           >
             {/* Progress Bar Background */}
             <div
-              className="absolute left-0 top-0 bottom-0 bg-primary/10 rounded-r-md transition-all duration-500"
+              className="absolute left-0 top-0 bottom-0 bg-primary/10 rounded-none transition-all duration-500"
               style={{ width: `${item.percentage}%` }}
             />
             {/* Content using flex z-10 */}
@@ -73,7 +68,7 @@ export function BreakdownCard({
               </span>
             </div>
             {/* Hover Highlight */}
-            <div className="absolute inset-0 hover:bg-muted/40 transition-colors rounded-sm pointer-events-none" />
+            <div className="absolute inset-0 hover:bg-muted/40 transition-colors rounded-none pointer-events-none" />
           </div>
         ))}
         {items.length === 0 && (

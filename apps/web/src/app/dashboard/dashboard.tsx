@@ -5,7 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { FlaskConical } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { queryClient, trpc } from "@/utils/trpc";
+import { trpc } from "@/utils/trpc";
 
 import { DashboardOverviewView } from "./_components/overview-view";
 import { DashboardSitesList } from "./_components/sites-list-view";
@@ -34,9 +34,37 @@ import {
   TEST_GEO_COUNTRY_GOAL_TOTALS,
   TEST_GEO_COUNTRY_SESSION_TOTALS,
 } from "./test-data";
+import {
+  type DashboardChartGranularity,
+  type DashboardDateRangeKey,
+  resolveDashboardUtcDateRange,
+} from "./overview-time-range";
 import { useDashboardOverviewData } from "./use-dashboard-overview-data";
 
 export type DashboardView = "overview" | "settings" | "funnels";
+
+type TestDataButtonProps = {
+  useTestData: boolean;
+  onToggle: () => void;
+};
+
+function TestDataButton({ useTestData, onToggle }: TestDataButtonProps) {
+  return (
+    <div className="fixed bottom-4 right-4 z-50">
+      <Button
+        variant={useTestData ? "default" : "outline"}
+        size="sm"
+        onClick={onToggle}
+        className={
+          useTestData ? "bg-amber-500 hover:bg-amber-600 text-black" : ""
+        }
+      >
+        <FlaskConical className="h-4 w-4 mr-2" />
+        {useTestData ? "Test Data ON" : "Test Data"}
+      </Button>
+    </div>
+  );
+}
 
 type DashboardProps = {
   siteId?: string;
@@ -49,48 +77,9 @@ export default function Dashboard({
 }: DashboardProps) {
   const sitesQuery = useQuery(trpc.sites.list.queryOptions());
   const sites = sitesQuery.data ?? [];
-  const siteIds = useMemo(() => sites.map((site) => site.id), [sites]);
-
-  const rollupQueries = useQuery({
-    queryKey: ["dashboard-rollups", siteIds],
-    queryFn: async () => {
-      if (siteIds.length === 0) {
-        return {};
-      }
-      const results = await Promise.all(
-        siteIds.map((siteId) =>
-          queryClient
-            .fetchQuery(trpc.analytics.rollups.queryOptions({ siteId }))
-            .then((rollup) => ({
-              siteId,
-              rollup,
-            })),
-        ),
-      );
-      return results.reduce<Record<string, RollupTotals>>(
-        (accumulator, entry) => {
-          const totals = entry.rollup.daily.reduce(
-            (summary, day) => ({
-              visitors: summary.visitors + day.visitors,
-            }),
-            { visitors: 0 },
-          );
-          accumulator[entry.siteId] = totals;
-          return accumulator;
-        },
-        {},
-      );
-    },
-    enabled: siteIds.length > 0,
-  });
-
-  const activeRollupQuery = useQuery({
-    ...trpc.analytics.rollups.queryOptions({ siteId: siteId ?? "" }),
-    enabled: Boolean(siteId),
-  });
-  const visitorsNowQuery = useQuery({
-    ...trpc.analytics.visitorsNow.queryOptions({ siteId: siteId ?? "" }),
-    enabled: Boolean(siteId),
+  const siteSummaryQuery = useQuery({
+    ...trpc.sites.summary.queryOptions(),
+    enabled: sitesQuery.isSuccess,
   });
 
   const [activeDeviceTab, setActiveDeviceTab] = useState<"device" | "browser">(
@@ -105,44 +94,123 @@ export default function Dashboard({
   const [showVisitorsSeries, setShowVisitorsSeries] = useState(true);
   const [showRevenueSeries, setShowRevenueSeries] = useState(true);
   const [useTestData, setUseTestData] = useState(false);
+  const [dateRangeKey, setDateRangeKey] =
+    useState<DashboardDateRangeKey>("last30Days");
+  const [chartGranularity, setChartGranularity] =
+    useState<DashboardChartGranularity>("daily");
 
-  const overviewData = useDashboardOverviewData(activeRollupQuery.data);
+  const selectedRange = resolveDashboardUtcDateRange(dateRangeKey);
+
+  const activeRollupCoreQuery = useQuery({
+    ...trpc.analytics.rollups.queryOptions({
+      siteId: siteId ?? "",
+      startDate: selectedRange.startDate,
+      endDate: selectedRange.endDate,
+      includeDaily: true,
+      includeDimensions: false,
+      includeGeoPoints: false,
+      includeRangeVisitors: false,
+    }),
+    enabled: Boolean(siteId),
+    placeholderData: (previousData) => previousData,
+  });
+  const activeRollupDimensionsQuery = useQuery({
+    ...trpc.analytics.rollups.queryOptions({
+      siteId: siteId ?? "",
+      startDate: selectedRange.startDate,
+      endDate: selectedRange.endDate,
+      includeDaily: false,
+      includeDimensions: true,
+      includeGeoPoints: false,
+      includeRangeVisitors: false,
+      dimensionLimit: 12,
+    }),
+    enabled: Boolean(siteId),
+    placeholderData: (previousData) => previousData,
+  });
+  const activeRollupGeoQuery = useQuery({
+    ...trpc.analytics.rollups.queryOptions({
+      siteId: siteId ?? "",
+      startDate: selectedRange.startDate,
+      endDate: selectedRange.endDate,
+      includeDaily: false,
+      includeDimensions: false,
+      includeGeoPoints: true,
+      includeRangeVisitors: false,
+      geoPointLimit: 300,
+    }),
+    enabled: Boolean(siteId),
+    placeholderData: (previousData) => previousData,
+  });
+  const kpiSnapshotInput =
+    dateRangeKey === "last24Hours"
+      ? {
+          siteId: siteId ?? "",
+          rangePreset: "last24Hours" as const,
+        }
+      : {
+          siteId: siteId ?? "",
+          startDate: selectedRange.startDate,
+          endDate: selectedRange.endDate,
+        };
+  const kpiSnapshotQuery = useQuery({
+    ...trpc.analytics.kpiSnapshot.queryOptions(kpiSnapshotInput),
+    enabled: Boolean(siteId),
+    placeholderData: (previousData) => previousData,
+    refetchInterval: siteId ? 10_000 : false,
+  });
+
+  const activeRollupData = useMemo(
+    () => ({
+      daily: activeRollupCoreQuery.data?.daily ?? [],
+      dimensions: activeRollupDimensionsQuery.data?.dimensions ?? [],
+      geoPoints: activeRollupGeoQuery.data?.geoPoints ?? [],
+      rangeVisitors: kpiSnapshotQuery.data?.visitors ?? 0,
+    }),
+    [
+      activeRollupCoreQuery.data?.daily,
+      activeRollupDimensionsQuery.data?.dimensions,
+      activeRollupGeoQuery.data?.geoPoints,
+      kpiSnapshotQuery.data?.visitors,
+    ],
+  );
+
+  const overviewData = useDashboardOverviewData(activeRollupData, {
+    range: {
+      startDate: selectedRange.startDate,
+      endDate: selectedRange.endDate,
+    },
+    granularity: chartGranularity,
+  });
 
   const isLoading =
     sitesQuery.isLoading ||
-    rollupQueries.isLoading ||
-    activeRollupQuery.isLoading ||
-    visitorsNowQuery.isLoading;
+    siteSummaryQuery.isLoading ||
+    (activeRollupCoreQuery.isLoading && !activeRollupCoreQuery.data) ||
+    (kpiSnapshotQuery.isLoading && !kpiSnapshotQuery.data);
+  const isRefreshing =
+    activeRollupCoreQuery.isFetching ||
+    activeRollupDimensionsQuery.isFetching ||
+    activeRollupGeoQuery.isFetching ||
+    kpiSnapshotQuery.isFetching;
   const activeSite = siteId ? sites.find((site) => site.id === siteId) : null;
-  const activeSiteTotals = siteId ? rollupQueries.data?.[siteId] : null;
-  const hasEvents = (activeSiteTotals?.visitors ?? 0) > 0;
+  const activeSiteTotals = siteId ? siteSummaryQuery.data?.[siteId] : null;
+  const hasEvents =
+    (kpiSnapshotQuery.data?.visitors ?? activeSiteTotals?.visitors ?? 0) > 0;
   const showEmptyState = Boolean(
     siteId && activeSite && !isLoading && !hasEvents,
   );
 
-  // Test Data Button component
-  const TestDataButton = () => (
-    <div className="fixed bottom-4 right-4 z-50">
-      <Button
-        variant={useTestData ? "default" : "outline"}
-        size="sm"
-        onClick={() => setUseTestData((prev) => !prev)}
-        className={
-          useTestData ? "bg-amber-500 hover:bg-amber-600 text-black" : ""
-        }
-      >
-        <FlaskConical className="h-4 w-4 mr-2" />
-        {useTestData ? "Test Data ON" : "Test Data"}
-      </Button>
-    </div>
-  );
+  const handleToggleTestData = () => setUseTestData((prev) => !prev);
 
   // When test mode is enabled, show test data immediately without any API calls
   if (useTestData && siteId) {
     return (
       <>
-        <TestDataButton />
+        <TestDataButton useTestData={useTestData} onToggle={handleToggleTestData} />
         <DashboardOverviewView
+          siteName={activeSite?.name ?? ""}
+          siteDomain={activeSite?.domain ?? ""}
           statsData={TEST_STATS_DATA}
           chartData={TEST_CHART_DATA}
           topReferrers={TEST_TOP_REFERRERS}
@@ -169,6 +237,12 @@ export default function Dashboard({
           showRevenueSeries={showRevenueSeries}
           onToggleVisitors={() => setShowVisitorsSeries((current) => !current)}
           onToggleRevenue={() => setShowRevenueSeries((current) => !current)}
+          dateRangeKey={dateRangeKey}
+          onDateRangeChange={setDateRangeKey}
+          chartGranularity={chartGranularity}
+          onChartGranularityChange={setChartGranularity}
+          selectedRangeLabel={selectedRange.label}
+          isRefreshing={isRefreshing}
         />
       </>
     );
@@ -178,7 +252,7 @@ export default function Dashboard({
     if (isLoading || !activeSite) {
       return (
         <>
-          <TestDataButton />
+          <TestDataButton useTestData={useTestData} onToggle={handleToggleTestData} />
           <DashboardLoadingState />
         </>
       );
@@ -187,7 +261,7 @@ export default function Dashboard({
     if (view === "settings") {
       return (
         <>
-          <TestDataButton />
+          <TestDataButton useTestData={useTestData} onToggle={handleToggleTestData} />
           <DashboardSettingsView site={activeSite} />
         </>
       );
@@ -196,7 +270,7 @@ export default function Dashboard({
     if (view === "funnels") {
       return (
         <>
-          <TestDataButton />
+          <TestDataButton useTestData={useTestData} onToggle={handleToggleTestData} />
           <DashboardFunnelsView site={activeSite} />
         </>
       );
@@ -205,15 +279,15 @@ export default function Dashboard({
     if (showEmptyState) {
       return (
         <>
-          <TestDataButton />
+          <TestDataButton useTestData={useTestData} onToggle={handleToggleTestData} />
           <DashboardEmptyState site={activeSite} siteId={siteId} />
         </>
       );
     }
 
     const statsData = {
-      visitorsCount: overviewData.visitorsTotal,
-      visitorsNowCount: visitorsNowQuery.data?.count ?? 0,
+      visitorsCount: kpiSnapshotQuery.data?.visitors ?? overviewData.visitorsTotal,
+      visitorsNowCount: kpiSnapshotQuery.data?.visitorsNow ?? 0,
       totalRevenue: overviewData.revenueTotals.total,
       primaryConversionRate: overviewData.conversionRate,
       revenuePerVisitor: overviewData.revenuePerVisitor,
@@ -224,8 +298,10 @@ export default function Dashboard({
 
     return (
       <>
-        <TestDataButton />
+        <TestDataButton useTestData={useTestData} onToggle={handleToggleTestData} />
         <DashboardOverviewView
+          siteName={activeSite.name}
+          siteDomain={activeSite.domain}
           statsData={statsData}
           chartData={overviewData.chartData}
           topReferrers={overviewData.topReferrers}
@@ -252,6 +328,12 @@ export default function Dashboard({
           showRevenueSeries={showRevenueSeries}
           onToggleVisitors={() => setShowVisitorsSeries((current) => !current)}
           onToggleRevenue={() => setShowRevenueSeries((current) => !current)}
+          dateRangeKey={dateRangeKey}
+          onDateRangeChange={setDateRangeKey}
+          chartGranularity={chartGranularity}
+          onChartGranularityChange={setChartGranularity}
+          selectedRangeLabel={selectedRange.label}
+          isRefreshing={isRefreshing}
         />
       </>
     );
@@ -260,7 +342,7 @@ export default function Dashboard({
   return (
     <DashboardSitesList
       sites={sites}
-      rollupTotals={rollupQueries.data}
+      rollupTotals={siteSummaryQuery.data as Record<string, RollupTotals> | undefined}
       isLoading={isLoading}
     />
   );

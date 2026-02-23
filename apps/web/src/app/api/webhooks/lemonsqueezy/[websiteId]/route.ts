@@ -140,6 +140,8 @@ export const POST = async (
   if (!SUPPORTED_EVENTS.has(eventName)) {
     return NextResponse.json({ received: true });
   }
+  const paymentEventId = `${eventId}:payment`;
+  const goalEventId = `${eventId}:goal`;
 
   const customData =
     parseCustomData(meta?.custom_data) ??
@@ -222,16 +224,43 @@ export const POST = async (
     const existing = await tx.query.rawEvent.findFirst({
       columns: { id: true },
       where: (events) =>
-        and(eq(events.siteId, siteRecord.id), eq(events.eventId, eventId)),
+        and(eq(events.siteId, siteRecord.id), eq(events.eventId, paymentEventId)),
     });
     if (existing) {
+      return true;
+    }
+
+    const insertedPayment = await tx
+      .insert(payment)
+      .values({
+        id: randomUUID(),
+        siteId: siteRecord.id,
+        visitorId,
+        eventId: paymentEventId,
+        amount: amount ?? 0,
+        currency: currency || "usd",
+        provider: "lemonsqueezy",
+        eventType: paymentEventType,
+        transactionId: transactionId || eventId,
+        customerId: customerId || null,
+        email: null,
+        name: null,
+        renewal: paymentEventType === "renewal",
+        refunded: paymentEventType === "refund",
+        createdAt: timestamp,
+      })
+      .onConflictDoNothing({
+        target: [payment.siteId, payment.transactionId],
+      })
+      .returning({ id: payment.id });
+    if (insertedPayment.length === 0) {
       return true;
     }
 
     await tx.insert(rawEvent).values({
       id: randomUUID(),
       siteId: siteRecord.id,
-      eventId,
+      eventId: paymentEventId,
       type: "payment",
       name: "lemonsqueezy_checkout",
       visitorId,
@@ -243,7 +272,7 @@ export const POST = async (
     await tx.insert(rawEvent).values({
       id: randomUUID(),
       siteId: siteRecord.id,
-      eventId,
+      eventId: goalEventId,
       type: "goal",
       name: getGoalName(amount),
       visitorId,
@@ -252,22 +281,29 @@ export const POST = async (
       metadata: sanitizedGoalMetadata,
     });
 
-    await tx.insert(payment).values({
-      id: randomUUID(),
+    await upsertRollups({
+      db: tx,
       siteId: siteRecord.id,
-      visitorId,
-      eventId,
-      amount: amount ?? 0,
-      currency: currency || "usd",
-      provider: "lemonsqueezy",
-      eventType: paymentEventType,
-      transactionId: transactionId || eventId,
-      customerId: customerId || null,
-      email: null,
-      name: null,
-      renewal: paymentEventType === "renewal",
-      refunded: paymentEventType === "refund",
-      createdAt: timestamp,
+      timestamp,
+      metrics: paymentMetrics,
+    });
+
+    await upsertRollups({
+      db: tx,
+      siteId: siteRecord.id,
+      timestamp,
+      metrics: goalMetrics,
+    });
+
+    await upsertDimensionRollups({
+      db: tx,
+      siteId: siteRecord.id,
+      timestamp,
+      metrics: goalMetrics,
+      dimensions: extractDimensionRollups({
+        type: "goal",
+        name: getGoalName(amount),
+      }),
     });
 
     return false;
@@ -276,28 +312,6 @@ export const POST = async (
   if (shouldSkip) {
     return NextResponse.json({ ok: true, deduped: true });
   }
-
-  await upsertRollups({
-    siteId: siteRecord.id,
-    timestamp,
-    metrics: paymentMetrics,
-  });
-
-  await upsertRollups({
-    siteId: siteRecord.id,
-    timestamp,
-    metrics: goalMetrics,
-  });
-
-  await upsertDimensionRollups({
-    siteId: siteRecord.id,
-    timestamp,
-    metrics: goalMetrics,
-    dimensions: extractDimensionRollups({
-      type: "goal",
-      name: getGoalName(amount),
-    }),
-  });
 
   return NextResponse.json({ ok: true });
 };

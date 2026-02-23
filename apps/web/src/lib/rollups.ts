@@ -36,6 +36,14 @@ export type RollupDimensionEntry = {
   value: string;
 };
 
+export type SessionDimensionContext = {
+  country?: string | null;
+  region?: string | null;
+  city?: string | null;
+  device?: string | null;
+  browser?: string | null;
+};
+
 const normalizeMetric = (value: number) =>
   Number.isFinite(value) && value > 0 ? Math.trunc(value) : 0;
 
@@ -386,6 +394,51 @@ export const extractDimensionRollups = ({
       entries.push({ dimension: "goal", value: normalizedGoal });
     }
   }
+
+  return entries;
+};
+
+export const extractSessionDimensionRollups = (
+  context: SessionDimensionContext | null | undefined,
+): RollupDimensionEntry[] => {
+  if (!context) {
+    return [];
+  }
+
+  const entries: RollupDimensionEntry[] = [];
+  const countryValue = typeof context.country === "string" ? context.country : "";
+  const regionValue = typeof context.region === "string" ? context.region : "";
+  const cityValue = typeof context.city === "string" ? context.city : "";
+  const deviceValue = typeof context.device === "string" ? context.device : "";
+  const browserValue = typeof context.browser === "string" ? context.browser : "";
+
+  if (countryValue) {
+    entries.push({
+      dimension: "country",
+      value: ensureDimensionValue(countryValue, "unknown", false),
+    });
+  }
+  if (regionValue) {
+    entries.push({
+      dimension: "region",
+      value: ensureDimensionValue(regionValue, "unknown", false),
+    });
+  }
+  if (cityValue) {
+    entries.push({
+      dimension: "city",
+      value: ensureDimensionValue(cityValue, "unknown", false),
+    });
+  }
+
+  entries.push({
+    dimension: "device",
+    value: ensureDimensionValue(deviceValue, "unknown"),
+  });
+  entries.push({
+    dimension: "browser",
+    value: ensureDimensionValue(browserValue, "unknown"),
+  });
 
   return entries;
 };

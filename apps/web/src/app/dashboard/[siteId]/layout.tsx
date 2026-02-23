@@ -13,7 +13,10 @@ type LayoutProps = {
   params: Promise<{ siteId: string }>;
 };
 
-export default async function SiteDashboardLayout({ children, params }: LayoutProps) {
+export default async function SiteDashboardLayout({
+  children,
+  params,
+}: LayoutProps) {
   const session = await auth.api.getSession({
     headers: await headers(),
   });
@@ -29,7 +32,9 @@ export default async function SiteDashboardLayout({ children, params }: LayoutPr
       <div className="mx-auto w-full max-w-6xl px-6 py-8">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Site dashboard</h1>
+            <h1 className="text-4xl font-black uppercase tracking-tighter">
+              Site dashboard
+            </h1>
             <p className="text-sm text-muted-foreground">Site ID: {siteId}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">

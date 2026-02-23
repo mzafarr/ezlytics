@@ -1,0 +1,13 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1738760000000,
+      "tag": "0008_add_raw_event_analytics_indexes",
+      "breakpoints": true
+    }
+  ]
+}

@@ -3,7 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 const getCorsHeaders = (origin: string | null) => {
   const headers: Record<string, string> = {
     "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Headers":
+      "Content-Type, Authorization, X-Ingest-Server-Key",
     "Access-Control-Max-Age": "86400",
   };
   if (origin) {
@@ -46,6 +47,22 @@ const forwardHeaders = (request: NextRequest, body?: string) => {
   const authorization = request.headers.get("authorization");
   if (authorization) {
     headers.set("authorization", authorization);
+  }
+  const ingestServerKey = request.headers.get("x-ingest-server-key");
+  if (ingestServerKey) {
+    headers.set("x-ingest-server-key", ingestServerKey);
+  }
+  const origin = request.headers.get("origin");
+  if (origin) {
+    headers.set("origin", origin);
+  }
+  const referer = request.headers.get("referer");
+  if (referer) {
+    headers.set("referer", referer);
+  }
+  const secFetchSite = request.headers.get("sec-fetch-site");
+  if (secFetchSite) {
+    headers.set("sec-fetch-site", secFetchSite);
   }
   const userAgent = request.headers.get("user-agent") ?? "";
   headers.set("user-agent", userAgent);

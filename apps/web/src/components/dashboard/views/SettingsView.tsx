@@ -4,6 +4,7 @@ import { useForm } from "@tanstack/react-form";
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 import z from "zod";
+import { env } from "@my-better-t-app/env/web";
 import {
   Card,
   CardContent,
@@ -17,7 +18,11 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { queryClient, trpc } from "@/utils/trpc";
-import { revenueProviderSchema, defaultRevenueProvider, type Exclusions } from "../schema";
+import {
+  revenueProviderSchema,
+  defaultRevenueProvider,
+  type Exclusions,
+} from "../schema";
 
 import { useEffect, useMemo, useState } from "react";
 
@@ -68,7 +73,9 @@ export function SettingsView({
         queryClient.invalidateQueries({ queryKey: sitesQueryOptions.queryKey });
         setRevenueProviderSettings((prev) => ({
           ...prev,
-          provider: data.revenueProvider as z.infer<typeof revenueProviderSchema>["provider"],
+          provider: data.revenueProvider as z.infer<
+            typeof revenueProviderSchema
+          >["provider"],
           webhookSecret: "",
         }));
         toast.success("Revenue settings updated");
@@ -78,7 +85,7 @@ export function SettingsView({
       },
     }),
   );
- 
+
   useEffect(() => {
     if (!latestSite) {
       setRevenueProviderSettings(defaultRevenueProvider);
@@ -86,7 +93,8 @@ export function SettingsView({
     }
     setRevenueProviderSettings((prev) => ({
       ...prev,
-      provider: (latestSite.revenueProvider ?? defaultRevenueProvider.provider) as z.infer<
+      provider: (latestSite.revenueProvider ??
+        defaultRevenueProvider.provider) as z.infer<
         typeof revenueProviderSchema
       >["provider"],
       webhookSecret: "",
@@ -127,8 +135,9 @@ export function SettingsView({
     },
   });
 
+  const appUrl = env.NEXT_PUBLIC_APP_URL ?? "";
   const installSnippet = latestSite
-    ? `<script\n  defer\n  data-website-id="${latestSite.websiteId}"\n  data-domain="${latestSite.domain}"\n  data-api-key="${latestSite.apiKey}"\n  src="https://your-analytics-domain.com/js/script.js"\n></script>`
+    ? `<script\n  defer\n  data-website-id="${latestSite.websiteId}"\n  data-domain="${latestSite.domain}"\n  data-api-key="${latestSite.apiKey}"\n  src="${appUrl}/js/script.js"\n></script>`
     : "";
   const apiKey = latestSite?.apiKey ?? "";
 
@@ -247,7 +256,7 @@ export function SettingsView({
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>Installation Snippet</Label>
-                <div className="relative rounded-md bg-muted p-4 font-mono text-xs">
+                <div className="relative rounded-none border-2 border-foreground bg-muted p-4 font-mono text-xs shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                   <pre className="overflow-x-auto">{installSnippet}</pre>
                   <Button
                     variant="outline"
@@ -360,75 +369,76 @@ export function SettingsView({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label>Provider</Label>
+            <select
+              className="flex h-9 w-full rounded-none border-2 border-foreground bg-transparent px-3 py-1 text-base shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-offset-0 focus-visible:border-primary disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+              value={revenueProviderSettings.provider}
+              onChange={(e) =>
+                setRevenueProviderSettings((prev) => ({
+                  ...prev,
+                  provider: e.target.value as any,
+                }))
+              }
+            >
+              <option value="none">None</option>
+              <option value="stripe">Stripe</option>
+              <option value="lemonsqueezy">LemonSqueezy</option>
+            </select>
+          </div>
+          {revenueProviderSettings.provider !== "none" && (
             <div className="space-y-2">
-              <Label>Provider</Label>
-              <select
-                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
-                value={revenueProviderSettings.provider}
+              <Label>Webhook Secret</Label>
+              <Input
+                type="password"
+                value={revenueProviderSettings.webhookSecret}
                 onChange={(e) =>
                   setRevenueProviderSettings((prev) => ({
                     ...prev,
-                    provider: e.target.value as any,
+                    webhookSecret: e.target.value,
                   }))
                 }
-              >
-                <option value="none">None</option>
-                <option value="stripe">Stripe</option>
-                <option value="lemonsqueezy">LemonSqueezy</option>
-              </select>
-            </div>
-            {revenueProviderSettings.provider !== "none" && (
-              <div className="space-y-2">
-                <Label>Webhook Secret</Label>
-                <Input
-                  type="password"
-                  value={revenueProviderSettings.webhookSecret}
-                  onChange={(e) =>
-                    setRevenueProviderSettings((prev) => ({
-                      ...prev,
-                      webhookSecret: e.target.value,
-                    }))
-                  }
+              />
+              <div className="flex items-center gap-2 pt-2">
+                <span
+                  className={`inline-block h-2 w-2 rounded-none border-2 border-foreground ${revenueConnectionReady ? "bg-emerald-500" : "bg-red-500"}`}
                 />
-                <div className="flex items-center gap-2 pt-2">
-                  <span
-                    className={`inline-block h-2 w-2 rounded-full ${revenueConnectionReady ? "bg-emerald-500" : "bg-red-500"}`}
-                  />
-                  <span className="text-xs text-muted-foreground">
-                    {revenueStatusLabel}
-                  </span>
-                </div>
-              </div>
-            )}
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                onClick={() => {
-                  if (!latestSite?.id) {
-                    toast.error("Select a site to update revenue settings");
-                    return;
-                  }
-                  updateRevenueProvider.mutate({
-                    siteId: latestSite.id,
-                    provider: revenueProviderSettings.provider,
-                    webhookSecret: revenueProviderSettings.webhookSecret,
-                  });
-                }}
-                disabled={
-                  updateRevenueProvider.isPending ||
-                  (revenueProviderSettings.provider !== "none" && !revenueConnectionReady)
-                }
-              >
-                {updateRevenueProvider.isPending ? "Saving..." : "Save settings"}
-              </Button>
-              {latestSite?.revenueProviderKeyUpdatedAt ? (
                 <span className="text-xs text-muted-foreground">
-                  {revenueLastUpdatedLabel}
+                  {revenueStatusLabel}
                 </span>
-              ) : null}
+              </div>
             </div>
-          </CardContent>
-        </Card>
-      </div>
+          )}
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              onClick={() => {
+                if (!latestSite?.id) {
+                  toast.error("Select a site to update revenue settings");
+                  return;
+                }
+                updateRevenueProvider.mutate({
+                  siteId: latestSite.id,
+                  provider: revenueProviderSettings.provider,
+                  webhookSecret: revenueProviderSettings.webhookSecret,
+                });
+              }}
+              disabled={
+                updateRevenueProvider.isPending ||
+                (revenueProviderSettings.provider !== "none" &&
+                  !revenueConnectionReady)
+              }
+            >
+              {updateRevenueProvider.isPending ? "Saving..." : "Save settings"}
+            </Button>
+            {latestSite?.revenueProviderKeyUpdatedAt ? (
+              <span className="text-xs text-muted-foreground">
+                {revenueLastUpdatedLabel}
+              </span>
+            ) : null}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

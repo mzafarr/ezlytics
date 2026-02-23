@@ -1,0 +1,26 @@
+{
+  "events": [
+    { "ts": 1735689600000, "type": "pageview", "visitorId": "v1", "sessionId": "s1", "bot": false, "country": "US", "device": "desktop", "browser": "chrome" },
+    { "ts": 1735689720000, "type": "goal", "visitorId": "v1", "sessionId": "s1", "bot": false },
+    { "ts": 1735689780000, "type": "pageview", "visitorId": "v2", "sessionId": "s2", "bot": false, "country": "CA", "device": "mobile", "browser": "safari" },
+    { "ts": 1735689840000, "type": "pageview", "visitorId": "vb", "sessionId": "sb", "bot": true, "country": "US", "device": "desktop", "browser": "chrome" },
+    { "ts": 1735689900000, "type": "pageview", "visitorId": "v1", "sessionId": "s1", "bot": false, "country": "US", "device": "desktop", "browser": "chrome" }
+  ],
+  "expected": {
+    "daily": {
+      "2025-01-01": {
+        "visitors": 2,
+        "sessions": 2,
+        "bounced": 1,
+        "duration": 300000,
+        "pageviews": 3,
+        "goals": 1
+      }
+    },
+    "sessionDimensions": {
+      "country": { "US": 1, "CA": 1 },
+      "device": { "desktop": 1, "mobile": 1 },
+      "browser": { "chrome": 1, "safari": 1 }
+    }
+  }
+}

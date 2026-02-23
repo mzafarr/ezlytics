@@ -100,6 +100,7 @@ const bodySchema = z.object({
     .min(1, "datafast_visitor_id is required")
     .max(128, "datafast_visitor_id is too long"),
   name: nameSchema,
+  event_id: z.string().trim().min(1).max(128).optional(),
   metadata: metadataSchema,
 });
 
@@ -157,6 +158,22 @@ export const POST = async (request: NextRequest) => {
   }
 
   const visitorId = parsed.data.datafast_visitor_id;
+  const idempotencyHeader = request.headers.get("x-idempotency-key");
+  const eventId = parsed.data.event_id ?? idempotencyHeader?.trim() ?? "";
+  if (!eventId) {
+    return NextResponse.json(
+      {
+        error: "Invalid request",
+        details: {
+          event_id: [
+            "event_id is required (body.event_id or x-idempotency-key header)",
+          ],
+        },
+      },
+      { status: 400 },
+    );
+  }
+
   const hadPageview = await hasPriorPageview(authResult.siteId, visitorId);
   if (!hadPageview) {
     return NextResponse.json(
@@ -169,35 +186,51 @@ export const POST = async (request: NextRequest) => {
   const createdAt = new Date();
   const timestamp = createdAt.getTime();
 
-  await db.insert(rawEvent).values({
-    id: randomUUID(),
-    siteId: authResult.siteId,
-    eventId: null,
-    type: "goal",
-    name: parsed.data.name,
-    visitorId,
-    timestamp,
-    metadata,
-    createdAt,
+  const result = await db.transaction(async (tx) => {
+    const inserted = await tx
+      .insert(rawEvent)
+      .values({
+        id: randomUUID(),
+        siteId: authResult.siteId,
+        eventId,
+        type: "goal",
+        name: parsed.data.name,
+        visitorId,
+        timestamp,
+        metadata,
+        createdAt,
+      })
+      .onConflictDoNothing({
+        target: [rawEvent.siteId, rawEvent.eventId],
+      })
+      .returning({ id: rawEvent.id });
+
+    if (inserted.length === 0) {
+      return { ok: true as const, deduped: true as const };
+    }
+
+    const metrics = metricsForEvent({ type: "goal", metadata });
+
+    await upsertRollups({
+      db: tx,
+      siteId: authResult.siteId,
+      timestamp: createdAt,
+      metrics,
+    });
+
+    await upsertDimensionRollups({
+      db: tx,
+      siteId: authResult.siteId,
+      timestamp: createdAt,
+      metrics,
+      dimensions: extractDimensionRollups({
+        type: "goal",
+        name: parsed.data.name,
+      }),
+    });
+
+    return { ok: true as const };
   });
 
-  const metrics = metricsForEvent({ type: "goal", metadata });
-
-  await upsertRollups({
-    siteId: authResult.siteId,
-    timestamp: createdAt,
-    metrics,
-  });
-
-  await upsertDimensionRollups({
-    siteId: authResult.siteId,
-    timestamp: createdAt,
-    metrics,
-    dimensions: extractDimensionRollups({
-      type: "goal",
-      name: parsed.data.name,
-    }),
-  });
-
-  return NextResponse.json({ ok: true });
+  return NextResponse.json(result);
 };

@@ -18,6 +18,7 @@ import { env } from "@my-better-t-app/env/server";
 import { sanitizeMetadataRecord } from "@/lib/metadata-sanitize";
 import {
   extractDimensionRollups,
+  extractSessionDimensionRollups,
   metricsForEvent,
   upsertDimensionRollups,
   upsertRollups,
@@ -34,6 +35,7 @@ import {
 import {
   normalizeDomain,
   isDomainAllowed,
+  extractDomainFromHeaderUrl,
   normalizeUrl,
   normalizeReferrer,
   normalizeTrackingValues,
@@ -51,6 +53,7 @@ import {
   resolveGeoFromHeaders,
 } from "@/app/api/v1/ingest/geo";
 import {
+  buildSessionDimensionContext,
   buildSessionMetrics,
 } from "@/app/api/v1/ingest/metrics";
 
@@ -60,7 +63,8 @@ const MAX_PAYLOAD_BYTES =
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Access-Control-Allow-Headers":
+    "Content-Type, Authorization, X-Ingest-Server-Key",
   "Access-Control-Max-Age": "86400",
 };
 
@@ -274,6 +278,53 @@ export const POST = async (request: NextRequest) => {
       ),
     );
   }
+  const originDomain = extractDomainFromHeaderUrl(
+    request.headers.get("origin"),
+  );
+  const refererDomain = extractDomainFromHeaderUrl(
+    request.headers.get("referer"),
+  );
+
+  const isLocalhostOrigin =
+    originDomain === "localhost" ||
+    originDomain === "127.0.0.1" ||
+    refererDomain === "localhost" ||
+    refererDomain === "127.0.0.1";
+  const allowLocalhostOrigin =
+    process.env.NODE_ENV !== "production" && isLocalhostOrigin;
+
+  if (!hasPrivilegedBotAccess && !allowLocalhostOrigin) {
+    if (originDomain && !isDomainAllowed(originDomain, normalizedSiteDomain)) {
+      return withCors(
+        NextResponse.json(
+          { error: "Origin not allowed for this site" },
+          { status: 403 },
+        ),
+      );
+    }
+    if (
+      refererDomain &&
+      !isDomainAllowed(refererDomain, normalizedSiteDomain)
+    ) {
+      return withCors(
+        NextResponse.json(
+          { error: "Referer not allowed for this site" },
+          { status: 403 },
+        ),
+      );
+    }
+    if (!originDomain && !refererDomain) {
+      return withCors(
+        NextResponse.json(
+          {
+            error:
+              "Origin or Referer header required for browser ingest (or use server key for trusted server-side ingest)",
+          },
+          { status: 403 },
+        ),
+      );
+    }
+  }
 
   if (payload.type === "identify") {
     const identifyValidation = identifyMetadataSchema.safeParse(
@@ -360,6 +411,7 @@ export const POST = async (request: NextRequest) => {
     clockSkewMs: timestampInfo.clockSkewMs,
     usedClientTimestamp: timestampInfo.usedClientTimestamp,
   };
+  const sessionDimensionContext = buildSessionDimensionContext(normalized);
 
   const createdAt = timestampInfo.serverDate;
   const eventDate = timestampInfo.eventDate;
@@ -445,8 +497,9 @@ export const POST = async (request: NextRequest) => {
             sessionId,
             visitorId: payload.visitorId,
             eventTimestamp: sessionEventTimestamp,
+            sessionContext: sessionDimensionContext,
           })
-        : [];
+        : { metricsUpdates: [], dimensionUpdates: [] };
 
     await upsertRollups({
       db: tx,
@@ -454,12 +507,24 @@ export const POST = async (request: NextRequest) => {
       timestamp: rollupTimestamp,
       metrics,
     });
-    for (const update of sessionUpdates) {
+    for (const update of sessionUpdates.metricsUpdates) {
       await upsertRollups({
         db: tx,
         siteId: authResult.siteId,
         timestamp: update.timestamp,
         metrics: update.metrics,
+      });
+    }
+    for (const update of sessionUpdates.dimensionUpdates) {
+      await upsertDimensionRollups({
+        db: tx,
+        siteId: authResult.siteId,
+        timestamp: update.timestamp,
+        metrics: {
+          ...metricsForEvent({ type: "noop" }),
+          sessions: update.sessionsDelta,
+        },
+        dimensions: extractSessionDimensionRollups(update.context),
       });
     }
 
@@ -478,6 +543,23 @@ export const POST = async (request: NextRequest) => {
 
     return { ok: true as const };
   });
+
+  if (process.env.NODE_ENV !== "production") {
+    return withCors(
+      NextResponse.json({
+        ...result,
+        debug: {
+          siteId: authResult.siteId,
+          usedClientTimestamp: timestampInfo.usedClientTimestamp,
+          clientTimestamp: timestampInfo.clientTimestamp,
+          clockSkewMs: timestampInfo.clockSkewMs,
+          eventTimestamp: timestamp,
+          serverTimestamp: createdAt.getTime(),
+          isBot,
+        },
+      }),
+    );
+  }
 
   return withCors(NextResponse.json(result));
 };

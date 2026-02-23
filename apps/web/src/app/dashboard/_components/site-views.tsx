@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { type Route } from "next";
+import { env } from "@my-better-t-app/env/web";
 
 import {
   Card,
@@ -37,6 +38,7 @@ export function DashboardLoadingState() {
 }
 
 export function DashboardSettingsView({ site }: { site: SiteSummary }) {
+  const appUrl = env.NEXT_PUBLIC_APP_URL ?? "";
   return (
     <div className="space-y-6">
       <Card>
@@ -55,13 +57,11 @@ export function DashboardSettingsView({ site }: { site: SiteSummary }) {
   data-website-id="${site.websiteId}"
   data-domain="${site.domain}"
   data-api-key="${site.apiKey}"
-  data-allow-localhost
-  src="/js/script.js"
+  src="${appUrl}/js/script.js"
 ></script>`}</pre>
             </div>
             <p className="text-xs text-muted-foreground">
-              Add this snippet to the &lt;head&gt; of your website. For
-              production, use your full domain URL for src.
+              Add this snippet to the &lt;head&gt; of your website.
             </p>
           </div>
           <div className="space-y-2">

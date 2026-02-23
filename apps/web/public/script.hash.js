@@ -313,8 +313,10 @@
   var RETRY_LIMIT = 3;
   var RETRY_BASE_DELAY = 1000;
   var RETRY_MAX_DELAY = 15000;
+  var HEARTBEAT_INTERVAL_MS = 30000;
   var retryQueue = [];
   var retryTimer = null;
+  var heartbeatTimer = null;
 
   function isSecureContext() {
     return typeof location !== "undefined" && location.protocol === "https:";
@@ -978,6 +980,54 @@
     sendEvent(payload, { keepalive: true });
   }
 
+  function sendHeartbeat() {
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+      return;
+    }
+    var now = Date.now();
+    var payload = {
+      type: "heartbeat",
+      websiteId: websiteId,
+      eventId: generateId(),
+      domain: domain,
+      path: getCurrentPath(),
+      referrer: document.referrer || "",
+      ts: now,
+      timestamp: new Date(now).toISOString(),
+      visitorId: getVisitorId(),
+      session_id: getSessionId(),
+    };
+    sendEvent(payload, { keepalive: false });
+  }
+
+  function stopHeartbeatLoop() {
+    if (!heartbeatTimer) {
+      return;
+    }
+    clearInterval(heartbeatTimer);
+    heartbeatTimer = null;
+  }
+
+  function startHeartbeatLoop() {
+    if (heartbeatTimer) {
+      return;
+    }
+    heartbeatTimer = setInterval(function () {
+      sendHeartbeat();
+    }, HEARTBEAT_INTERVAL_MS);
+  }
+
+  function syncHeartbeatLoop() {
+    if (typeof document === "undefined") {
+      return;
+    }
+    if (document.visibilityState === "hidden") {
+      stopHeartbeatLoop();
+      return;
+    }
+    startHeartbeatLoop();
+  }
+
   function handleDatafastCommand(args) {
     if (!args || args.length === 0) {
       return;
@@ -1014,6 +1064,7 @@
 
   lastPath = getCurrentPath();
   sendPageview(document.referrer || "");
+  syncHeartbeatLoop();
 
   if (typeof history !== "undefined") {
     var originalPushState = history.pushState;
@@ -1035,10 +1086,12 @@
 
   if (typeof window !== "undefined" && window.addEventListener) {
     window.addEventListener("hashchange", handleRouteChange);
+    window.addEventListener("beforeunload", stopHeartbeatLoop);
   }
 
   if (typeof document !== "undefined" && document.addEventListener) {
     document.addEventListener("click", handleGoalClick, true);
+    document.addEventListener("visibilitychange", syncHeartbeatLoop);
   }
 
   if (

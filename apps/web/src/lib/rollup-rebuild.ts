@@ -11,12 +11,19 @@ import {
   rollupHourly,
   sql,
 } from "@my-better-t-app/db";
-import { extractDimensionRollups, metricsForEvent, type RollupMetrics } from "@/lib/rollups";
+import {
+  extractDimensionRollups,
+  extractSessionDimensionRollups,
+  metricsForEvent,
+  type RollupMetrics,
+  type SessionDimensionContext,
+} from "@/lib/rollups";
 
 type SessionState = {
   pageviews: number;
   firstTimestamp: number;
   lastTimestamp: number;
+  firstContext: SessionDimensionContext;
 };
 
 type DimensionEntry = {
@@ -33,6 +40,33 @@ export type RollupRebuildOptions = {
   from: Date;
   to: Date;
   dryRun?: boolean;
+  includeDiff?: boolean;
+};
+
+type RollupDiffSample = {
+  table: "daily" | "hourly" | "dimensionDaily" | "dimensionHourly";
+  key: string;
+  field: string;
+  expected: number;
+  actual: number;
+};
+
+type RollupDiffTableSummary = {
+  expected: number;
+  actual: number;
+  mismatches: number;
+};
+
+type RollupDiffSummary = {
+  checked: boolean;
+  mismatches: number;
+  tables: {
+    daily: RollupDiffTableSummary;
+    hourly: RollupDiffTableSummary;
+    dimensionDaily: RollupDiffTableSummary;
+    dimensionHourly: RollupDiffTableSummary;
+  };
+  samples: RollupDiffSample[];
 };
 
 export type RollupRebuildSummary = {
@@ -49,6 +83,7 @@ export type RollupRebuildSummary = {
     dimensionDaily: number;
     dimensionHourly: number;
   };
+  diff?: RollupDiffSummary;
 };
 
 const createEmptyMetrics = (): RollupMetrics => ({
@@ -91,8 +126,94 @@ const addMetrics = (target: RollupMetrics, delta: RollupMetrics) => {
   target.revenueByType.refund += delta.revenueByType.refund;
 };
 
+const normalizeRevenueByType = (value: unknown) => {
+  const record = isRecord(value) ? value : {};
+  return {
+    new: Number(record.new ?? 0) || 0,
+    renewal: Number(record.renewal ?? 0) || 0,
+    refund: Number(record.refund ?? 0) || 0,
+  };
+};
+
+const keyFor = {
+  daily: (row: { siteId: string; date: string }) => `${row.siteId}|${row.date}`,
+  hourly: (row: { siteId: string; date: string; hour: number }) =>
+    `${row.siteId}|${row.date}|${row.hour}`,
+  dimensionDaily: (row: {
+    siteId: string;
+    date: string;
+    dimension: string;
+    dimensionValue: string;
+  }) => `${row.siteId}|${row.date}|${row.dimension}|${row.dimensionValue}`,
+  dimensionHourly: (row: {
+    siteId: string;
+    date: string;
+    hour: number;
+    dimension: string;
+    dimensionValue: string;
+  }) =>
+    `${row.siteId}|${row.date}|${row.hour}|${row.dimension}|${row.dimensionValue}`,
+};
+
+const compareMetricMaps = ({
+  table,
+  expected,
+  actual,
+  fields,
+}: {
+  table: RollupDiffSample["table"];
+  expected: Map<string, Record<string, number>>;
+  actual: Map<string, Record<string, number>>;
+  fields: string[];
+}) => {
+  const samples: RollupDiffSample[] = [];
+  let mismatches = 0;
+  const keys = new Set([...expected.keys(), ...actual.keys()]);
+  for (const key of keys) {
+    const expectedMetrics = expected.get(key) ?? {};
+    const actualMetrics = actual.get(key) ?? {};
+    for (const field of fields) {
+      const expectedValue = Number(expectedMetrics[field] ?? 0);
+      const actualValue = Number(actualMetrics[field] ?? 0);
+      if (expectedValue !== actualValue) {
+        mismatches += 1;
+        if (samples.length < 20) {
+          samples.push({
+            table,
+            key,
+            field,
+            expected: expectedValue,
+            actual: actualValue,
+          });
+        }
+      }
+    }
+  }
+  return {
+    summary: {
+      expected: expected.size,
+      actual: actual.size,
+      mismatches,
+    },
+    samples,
+  };
+};
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+const asSessionContextValue = (value: unknown) =>
+  typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+
+const buildSessionDimensionContext = (
+  normalized: Record<string, unknown> | null,
+): SessionDimensionContext => ({
+  country: asSessionContextValue(normalized?.country),
+  region: asSessionContextValue(normalized?.region),
+  city: asSessionContextValue(normalized?.city),
+  device: asSessionContextValue(normalized?.device) ?? "unknown",
+  browser: asSessionContextValue(normalized?.browser) ?? "unknown",
+});
 
 const toBucketDate = (timestamp: number) =>
   new Date(
@@ -135,6 +256,7 @@ export const runRollupRebuild = async ({
   from,
   to,
   dryRun = false,
+  includeDiff = false,
 }: RollupRebuildOptions): Promise<RollupRebuildSummary> => {
   const fromDate = startOfUtcDay(from);
   const toDate = startOfUtcDay(to);
@@ -189,20 +311,27 @@ export const runRollupRebuild = async ({
 
   for (const row of rows) {
     eventsProcessed += 1;
-    const timestamp = Number(row.timestamp);
-    if (!Number.isFinite(timestamp)) {
+    const eventTimestamp = Number(row.timestamp);
+    if (!Number.isFinite(eventTimestamp)) {
       continue;
     }
 
     const normalizedRecord = isRecord(row.normalized) ? row.normalized : null;
+    const createdAtTimestamp = row.createdAt?.getTime();
+    const rollupTimestamp =
+      normalizedRecord?.usedClientTimestamp === true && Number.isFinite(eventTimestamp)
+        ? eventTimestamp
+        : Number.isFinite(createdAtTimestamp)
+          ? createdAtTimestamp
+          : eventTimestamp;
     if (normalizedRecord?.bot === true) {
       botEventsSkipped += 1;
       continue;
     }
 
     const metadataRecord = isRecord(row.metadata) ? row.metadata : null;
-    const rollupDate = toBucketDate(timestamp);
-    const rollupHour = new Date(timestamp).getUTCHours();
+    const rollupDate = toBucketDate(rollupTimestamp);
+    const rollupHour = new Date(rollupTimestamp).getUTCHours();
     const dailyKey = `${row.siteId}|${rollupDate}`;
     const hourlyKey = `${row.siteId}|${rollupDate}|${rollupHour}`;
 
@@ -240,14 +369,15 @@ export const runRollupRebuild = async ({
         const existing = sessionMap.get(sessionKey);
         const sessionMetrics = createEmptyMetrics();
         if (!existing) {
-          const sessionStartDateKey = toBucketDate(timestamp);
-          const sessionStartHour = new Date(timestamp).getUTCHours();
+          const sessionStartDateKey = toBucketDate(eventTimestamp);
+          const sessionStartHour = new Date(eventTimestamp).getUTCHours();
           const sessionDailyKey = `${row.siteId}|${sessionStartDateKey}`;
           const sessionHourlyKey = `${row.siteId}|${sessionStartDateKey}|${sessionStartHour}`;
           sessionMap.set(sessionKey, {
             pageviews: 1,
-            firstTimestamp: timestamp,
-            lastTimestamp: timestamp,
+            firstTimestamp: eventTimestamp,
+            lastTimestamp: eventTimestamp,
+            firstContext: buildSessionDimensionContext(normalizedRecord),
           });
           sessionMetrics.sessions = 1;
           sessionMetrics.bouncedSessions = 1;
@@ -264,8 +394,8 @@ export const runRollupRebuild = async ({
           const previousStartHour = new Date(existing.firstTimestamp).getUTCHours();
           const previousDailyKey = `${row.siteId}|${previousStartDateKey}`;
           const previousHourlyKey = `${row.siteId}|${previousStartDateKey}|${previousStartHour}`;
-          const nextFirstTimestamp = Math.min(existing.firstTimestamp, timestamp);
-          const nextLastTimestamp = Math.max(existing.lastTimestamp, timestamp);
+          const nextFirstTimestamp = Math.min(existing.firstTimestamp, eventTimestamp);
+          const nextLastTimestamp = Math.max(existing.lastTimestamp, eventTimestamp);
           const previousDuration = Math.max(
             0,
             existing.lastTimestamp - existing.firstTimestamp,
@@ -284,6 +414,9 @@ export const runRollupRebuild = async ({
           }
           const previousPageviews = existing.pageviews;
           existing.pageviews += 1;
+          if (eventTimestamp < existing.firstTimestamp) {
+            existing.firstContext = buildSessionDimensionContext(normalizedRecord);
+          }
           existing.firstTimestamp = nextFirstTimestamp;
           existing.lastTimestamp = nextLastTimestamp;
           if (previousStartDateKey !== nextStartDateKey || previousStartHour !== nextStartHour) {
@@ -304,9 +437,6 @@ export const runRollupRebuild = async ({
 
             const addMetricsDelta = createEmptyMetrics();
             addMetricsDelta.sessions = 1;
-            if (previousPageviews === 1) {
-              addMetricsDelta.bouncedSessions = 1;
-            }
             if (nextDuration !== 0) {
               addMetricsDelta.avgSessionDurationMs = nextDuration;
             }
@@ -368,8 +498,105 @@ export const runRollupRebuild = async ({
     }
   }
 
+  // Session dimension rollups use first-pageview context.
+  for (const [sessionKey, state] of sessionMap.entries()) {
+    const [sessionSiteId] = sessionKey.split("|");
+    const sessionDate = toBucketDate(state.firstTimestamp);
+    const sessionHour = new Date(state.firstTimestamp).getUTCHours();
+    const sessionMetrics = createEmptyMetrics();
+    sessionMetrics.sessions = 1;
+    const dimensionEntries = extractSessionDimensionRollups(state.firstContext);
+
+    for (const entry of dimensionEntries) {
+      const dailyDimensionKey = `${sessionSiteId}|${sessionDate}|${entry.dimension}|${entry.value}`;
+      const existingDaily = dimensionDailyMap.get(dailyDimensionKey);
+      if (!existingDaily) {
+        dimensionDailyMap.set(dailyDimensionKey, {
+          siteId: sessionSiteId,
+          date: sessionDate,
+          dimension: entry.dimension,
+          dimensionValue: entry.value,
+          metrics: {
+            ...sessionMetrics,
+            revenueByType: { ...sessionMetrics.revenueByType },
+          },
+        });
+      } else {
+        addMetrics(existingDaily.metrics, sessionMetrics);
+      }
+
+      const hourlyDimensionKey = `${sessionSiteId}|${sessionDate}|${sessionHour}|${entry.dimension}|${entry.value}`;
+      const existingHourly = dimensionHourlyMap.get(hourlyDimensionKey);
+      if (!existingHourly) {
+        dimensionHourlyMap.set(hourlyDimensionKey, {
+          siteId: sessionSiteId,
+          date: sessionDate,
+          hour: sessionHour,
+          dimension: entry.dimension,
+          dimensionValue: entry.value,
+          metrics: {
+            ...sessionMetrics,
+            revenueByType: { ...sessionMetrics.revenueByType },
+          },
+        });
+      } else {
+        addMetrics(existingHourly.metrics, sessionMetrics);
+      }
+    }
+  }
+
+  const dailyRows = Array.from(dailyMap.entries()).map(([key, metrics]) => {
+    const [bucketSiteId, date] = key.split("|");
+    return {
+      id: randomUUID(),
+      siteId: bucketSiteId,
+      date,
+      ...metrics,
+    };
+  });
+
+  const hourlyRows = Array.from(hourlyMap.entries()).map(([key, metrics]) => {
+    const [bucketSiteId, date, hour] = key.split("|");
+    return {
+      id: randomUUID(),
+      siteId: bucketSiteId,
+      date,
+      hour: Number(hour),
+      ...metrics,
+    };
+  });
+
+  const dimensionDailyRows = Array.from(dimensionDailyMap.values()).map((entry) => ({
+    id: randomUUID(),
+    siteId: entry.siteId,
+    date: entry.date,
+    dimension: entry.dimension,
+    dimensionValue: entry.dimensionValue,
+    visitors: entry.metrics.visitors,
+    sessions: entry.metrics.sessions,
+    pageviews: entry.metrics.pageviews,
+    goals: entry.metrics.goals,
+    revenue: entry.metrics.revenue,
+    revenueByType: entry.metrics.revenueByType,
+  }));
+
+  const dimensionHourlyRows = Array.from(dimensionHourlyMap.values()).map((entry) => ({
+    id: randomUUID(),
+    siteId: entry.siteId,
+    date: entry.date,
+    hour: entry.hour ?? 0,
+    dimension: entry.dimension,
+    dimensionValue: entry.dimensionValue,
+    visitors: entry.metrics.visitors,
+    sessions: entry.metrics.sessions,
+    pageviews: entry.metrics.pageviews,
+    goals: entry.metrics.goals,
+    revenue: entry.metrics.revenue,
+    revenueByType: entry.metrics.revenueByType,
+  }));
+
   if (!dryRun) {
-    const deleteFilters = siteId
+    const deleteDailyFilters = siteId
       ? and(
           sql`${rollupDaily.date} >= ${fromDateStr}`,
           sql`${rollupDaily.date} < ${toDateStr}`,
@@ -379,61 +606,41 @@ export const runRollupRebuild = async ({
           sql`${rollupDaily.date} >= ${fromDateStr}`,
           sql`${rollupDaily.date} < ${toDateStr}`,
         );
+    const deleteHourlyFilters = siteId
+      ? and(
+          sql`${rollupHourly.date} >= ${fromDateStr}`,
+          sql`${rollupHourly.date} < ${toDateStr}`,
+          eq(rollupHourly.siteId, siteId),
+        )
+      : and(
+          sql`${rollupHourly.date} >= ${fromDateStr}`,
+          sql`${rollupHourly.date} < ${toDateStr}`,
+        );
+    const deleteDimensionDailyFilters = siteId
+      ? and(
+          sql`${rollupDimensionDaily.date} >= ${fromDateStr}`,
+          sql`${rollupDimensionDaily.date} < ${toDateStr}`,
+          eq(rollupDimensionDaily.siteId, siteId),
+        )
+      : and(
+          sql`${rollupDimensionDaily.date} >= ${fromDateStr}`,
+          sql`${rollupDimensionDaily.date} < ${toDateStr}`,
+        );
+    const deleteDimensionHourlyFilters = siteId
+      ? and(
+          sql`${rollupDimensionHourly.date} >= ${fromDateStr}`,
+          sql`${rollupDimensionHourly.date} < ${toDateStr}`,
+          eq(rollupDimensionHourly.siteId, siteId),
+        )
+      : and(
+          sql`${rollupDimensionHourly.date} >= ${fromDateStr}`,
+          sql`${rollupDimensionHourly.date} < ${toDateStr}`,
+        );
 
-    await db.delete(rollupDaily).where(deleteFilters);
-    await db.delete(rollupHourly).where(deleteFilters);
-    await db.delete(rollupDimensionDaily).where(deleteFilters);
-    await db.delete(rollupDimensionHourly).where(deleteFilters);
-
-    const dailyRows = Array.from(dailyMap.entries()).map(([key, metrics]) => {
-      const [bucketSiteId, date] = key.split("|");
-      return {
-        id: randomUUID(),
-        siteId: bucketSiteId,
-        date,
-        ...metrics,
-      };
-    });
-
-    const hourlyRows = Array.from(hourlyMap.entries()).map(([key, metrics]) => {
-      const [bucketSiteId, date, hour] = key.split("|");
-      return {
-        id: randomUUID(),
-        siteId: bucketSiteId,
-        date,
-        hour: Number(hour),
-        ...metrics,
-      };
-    });
-
-    const dimensionDailyRows = Array.from(dimensionDailyMap.values()).map((entry) => ({
-      id: randomUUID(),
-      siteId: entry.siteId,
-      date: entry.date,
-      dimension: entry.dimension,
-      dimensionValue: entry.dimensionValue,
-      visitors: entry.metrics.visitors,
-      sessions: entry.metrics.sessions,
-      pageviews: entry.metrics.pageviews,
-      goals: entry.metrics.goals,
-      revenue: entry.metrics.revenue,
-      revenueByType: entry.metrics.revenueByType,
-    }));
-
-    const dimensionHourlyRows = Array.from(dimensionHourlyMap.values()).map((entry) => ({
-      id: randomUUID(),
-      siteId: entry.siteId,
-      date: entry.date,
-      hour: entry.hour ?? 0,
-      dimension: entry.dimension,
-      dimensionValue: entry.dimensionValue,
-      visitors: entry.metrics.visitors,
-      sessions: entry.metrics.sessions,
-      pageviews: entry.metrics.pageviews,
-      goals: entry.metrics.goals,
-      revenue: entry.metrics.revenue,
-      revenueByType: entry.metrics.revenueByType,
-    }));
+    await db.delete(rollupDaily).where(deleteDailyFilters);
+    await db.delete(rollupHourly).where(deleteHourlyFilters);
+    await db.delete(rollupDimensionDaily).where(deleteDimensionDailyFilters);
+    await db.delete(rollupDimensionHourly).where(deleteDimensionHourlyFilters);
 
     if (dailyRows.length > 0) {
       await insertInChunks(rollupDaily, dailyRows);
@@ -447,6 +654,274 @@ export const runRollupRebuild = async ({
     if (dimensionHourlyRows.length > 0) {
       await insertDimensionInChunks(rollupDimensionHourly, dimensionHourlyRows);
     }
+  }
+
+  let diff: RollupDiffSummary | undefined;
+  if (includeDiff || dryRun) {
+    const deleteFilters = siteId
+      ? and(
+          sql`${rollupDaily.date} >= ${fromDateStr}`,
+          sql`${rollupDaily.date} < ${toDateStr}`,
+          eq(rollupDaily.siteId, siteId),
+        )
+      : and(
+          sql`${rollupDaily.date} >= ${fromDateStr}`,
+          sql`${rollupDaily.date} < ${toDateStr}`,
+        );
+    const deleteHourlyFilters = siteId
+      ? and(
+          sql`${rollupHourly.date} >= ${fromDateStr}`,
+          sql`${rollupHourly.date} < ${toDateStr}`,
+          eq(rollupHourly.siteId, siteId),
+        )
+      : and(
+          sql`${rollupHourly.date} >= ${fromDateStr}`,
+          sql`${rollupHourly.date} < ${toDateStr}`,
+        );
+    const deleteDimensionDailyFilters = siteId
+      ? and(
+          sql`${rollupDimensionDaily.date} >= ${fromDateStr}`,
+          sql`${rollupDimensionDaily.date} < ${toDateStr}`,
+          eq(rollupDimensionDaily.siteId, siteId),
+        )
+      : and(
+          sql`${rollupDimensionDaily.date} >= ${fromDateStr}`,
+          sql`${rollupDimensionDaily.date} < ${toDateStr}`,
+        );
+    const deleteDimensionHourlyFilters = siteId
+      ? and(
+          sql`${rollupDimensionHourly.date} >= ${fromDateStr}`,
+          sql`${rollupDimensionHourly.date} < ${toDateStr}`,
+          eq(rollupDimensionHourly.siteId, siteId),
+        )
+      : and(
+          sql`${rollupDimensionHourly.date} >= ${fromDateStr}`,
+          sql`${rollupDimensionHourly.date} < ${toDateStr}`,
+        );
+
+    const [actualDaily, actualHourly, actualDimensionDaily, actualDimensionHourly] =
+      await Promise.all([
+        db.select().from(rollupDaily).where(deleteFilters),
+        db.select().from(rollupHourly).where(deleteHourlyFilters),
+        db.select().from(rollupDimensionDaily).where(deleteDimensionDailyFilters),
+        db.select().from(rollupDimensionHourly).where(deleteDimensionHourlyFilters),
+      ]);
+
+    const expectedDailyMap = new Map(
+      dailyRows.map((row) => [
+        keyFor.daily(row),
+        {
+          visitors: row.visitors,
+          sessions: row.sessions,
+          bouncedSessions: row.bouncedSessions,
+          avgSessionDurationMs: row.avgSessionDurationMs,
+          pageviews: row.pageviews,
+          goals: row.goals,
+          revenue: row.revenue,
+          revenueNew: normalizeRevenueByType(row.revenueByType).new,
+          revenueRenewal: normalizeRevenueByType(row.revenueByType).renewal,
+          revenueRefund: normalizeRevenueByType(row.revenueByType).refund,
+        },
+      ]),
+    );
+    const actualDailyMap = new Map(
+      actualDaily.map((row) => [
+        keyFor.daily(row),
+        {
+          visitors: row.visitors,
+          sessions: row.sessions,
+          bouncedSessions: row.bouncedSessions,
+          avgSessionDurationMs: row.avgSessionDurationMs,
+          pageviews: row.pageviews,
+          goals: row.goals,
+          revenue: row.revenue,
+          revenueNew: normalizeRevenueByType(row.revenueByType).new,
+          revenueRenewal: normalizeRevenueByType(row.revenueByType).renewal,
+          revenueRefund: normalizeRevenueByType(row.revenueByType).refund,
+        },
+      ]),
+    );
+    const expectedHourlyMap = new Map(
+      hourlyRows.map((row) => [
+        keyFor.hourly(row),
+        {
+          visitors: row.visitors,
+          sessions: row.sessions,
+          bouncedSessions: row.bouncedSessions,
+          avgSessionDurationMs: row.avgSessionDurationMs,
+          pageviews: row.pageviews,
+          goals: row.goals,
+          revenue: row.revenue,
+          revenueNew: normalizeRevenueByType(row.revenueByType).new,
+          revenueRenewal: normalizeRevenueByType(row.revenueByType).renewal,
+          revenueRefund: normalizeRevenueByType(row.revenueByType).refund,
+        },
+      ]),
+    );
+    const actualHourlyMap = new Map(
+      actualHourly.map((row) => [
+        keyFor.hourly(row),
+        {
+          visitors: row.visitors,
+          sessions: row.sessions,
+          bouncedSessions: row.bouncedSessions,
+          avgSessionDurationMs: row.avgSessionDurationMs,
+          pageviews: row.pageviews,
+          goals: row.goals,
+          revenue: row.revenue,
+          revenueNew: normalizeRevenueByType(row.revenueByType).new,
+          revenueRenewal: normalizeRevenueByType(row.revenueByType).renewal,
+          revenueRefund: normalizeRevenueByType(row.revenueByType).refund,
+        },
+      ]),
+    );
+    const expectedDimensionDailyMap = new Map(
+      dimensionDailyRows.map((row) => [
+        keyFor.dimensionDaily(row),
+        {
+          visitors: row.visitors,
+          sessions: row.sessions,
+          pageviews: row.pageviews,
+          goals: row.goals,
+          revenue: row.revenue,
+          revenueNew: normalizeRevenueByType(row.revenueByType).new,
+          revenueRenewal: normalizeRevenueByType(row.revenueByType).renewal,
+          revenueRefund: normalizeRevenueByType(row.revenueByType).refund,
+        },
+      ]),
+    );
+    const actualDimensionDailyMap = new Map(
+      actualDimensionDaily.map((row) => [
+        keyFor.dimensionDaily(row),
+        {
+          visitors: row.visitors,
+          sessions: row.sessions,
+          pageviews: row.pageviews,
+          goals: row.goals,
+          revenue: row.revenue,
+          revenueNew: normalizeRevenueByType(row.revenueByType).new,
+          revenueRenewal: normalizeRevenueByType(row.revenueByType).renewal,
+          revenueRefund: normalizeRevenueByType(row.revenueByType).refund,
+        },
+      ]),
+    );
+    const expectedDimensionHourlyMap = new Map(
+      dimensionHourlyRows.map((row) => [
+        keyFor.dimensionHourly(row),
+        {
+          visitors: row.visitors,
+          sessions: row.sessions,
+          pageviews: row.pageviews,
+          goals: row.goals,
+          revenue: row.revenue,
+          revenueNew: normalizeRevenueByType(row.revenueByType).new,
+          revenueRenewal: normalizeRevenueByType(row.revenueByType).renewal,
+          revenueRefund: normalizeRevenueByType(row.revenueByType).refund,
+        },
+      ]),
+    );
+    const actualDimensionHourlyMap = new Map(
+      actualDimensionHourly.map((row) => [
+        keyFor.dimensionHourly(row),
+        {
+          visitors: row.visitors,
+          sessions: row.sessions,
+          pageviews: row.pageviews,
+          goals: row.goals,
+          revenue: row.revenue,
+          revenueNew: normalizeRevenueByType(row.revenueByType).new,
+          revenueRenewal: normalizeRevenueByType(row.revenueByType).renewal,
+          revenueRefund: normalizeRevenueByType(row.revenueByType).refund,
+        },
+      ]),
+    );
+
+    const dailyDiff = compareMetricMaps({
+      table: "daily",
+      expected: expectedDailyMap,
+      actual: actualDailyMap,
+      fields: [
+        "visitors",
+        "sessions",
+        "bouncedSessions",
+        "avgSessionDurationMs",
+        "pageviews",
+        "goals",
+        "revenue",
+        "revenueNew",
+        "revenueRenewal",
+        "revenueRefund",
+      ],
+    });
+    const hourlyDiff = compareMetricMaps({
+      table: "hourly",
+      expected: expectedHourlyMap,
+      actual: actualHourlyMap,
+      fields: [
+        "visitors",
+        "sessions",
+        "bouncedSessions",
+        "avgSessionDurationMs",
+        "pageviews",
+        "goals",
+        "revenue",
+        "revenueNew",
+        "revenueRenewal",
+        "revenueRefund",
+      ],
+    });
+    const dimensionDailyDiff = compareMetricMaps({
+      table: "dimensionDaily",
+      expected: expectedDimensionDailyMap,
+      actual: actualDimensionDailyMap,
+      fields: [
+        "visitors",
+        "sessions",
+        "pageviews",
+        "goals",
+        "revenue",
+        "revenueNew",
+        "revenueRenewal",
+        "revenueRefund",
+      ],
+    });
+    const dimensionHourlyDiff = compareMetricMaps({
+      table: "dimensionHourly",
+      expected: expectedDimensionHourlyMap,
+      actual: actualDimensionHourlyMap,
+      fields: [
+        "visitors",
+        "sessions",
+        "pageviews",
+        "goals",
+        "revenue",
+        "revenueNew",
+        "revenueRenewal",
+        "revenueRefund",
+      ],
+    });
+
+    const samples = [
+      ...dailyDiff.samples,
+      ...hourlyDiff.samples,
+      ...dimensionDailyDiff.samples,
+      ...dimensionHourlyDiff.samples,
+    ].slice(0, 20);
+    diff = {
+      checked: true,
+      mismatches:
+        dailyDiff.summary.mismatches +
+        hourlyDiff.summary.mismatches +
+        dimensionDailyDiff.summary.mismatches +
+        dimensionHourlyDiff.summary.mismatches,
+      tables: {
+        daily: dailyDiff.summary,
+        hourly: hourlyDiff.summary,
+        dimensionDaily: dimensionDailyDiff.summary,
+        dimensionHourly: dimensionHourlyDiff.summary,
+      },
+      samples,
+    };
   }
 
   return {
@@ -463,5 +938,6 @@ export const runRollupRebuild = async ({
       dimensionDaily: dimensionDailyMap.size,
       dimensionHourly: dimensionHourlyMap.size,
     },
+    diff,
   };
 };

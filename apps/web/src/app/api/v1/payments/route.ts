@@ -118,84 +118,119 @@ export const POST = async (request: NextRequest) => {
 
   const createdAt = parsed.data.timestamp ?? new Date();
   const paymentId = randomUUID();
-
-  await db.insert(payment).values({
-    id: paymentId,
-    siteId: authResult.siteId,
-    visitorId: parsed.data.visitor_id ?? null,
-    eventId: null,
-    amount: parsed.data.amount,
-    currency: parsed.data.currency,
-    provider: "custom",
-    eventType: parsed.data.refunded ? "refund" : parsed.data.renewal ? "renewal" : "new",
-    transactionId: parsed.data.transaction_id,
-    customerId: parsed.data.customer_id ?? null,
-    email: parsed.data.email ?? null,
-    name: parsed.data.name ?? null,
-    renewal: parsed.data.renewal ?? false,
-    refunded: parsed.data.refunded ?? false,
-    createdAt,
+  const paymentEventId = `payment:${parsed.data.transaction_id}`;
+  const goalEventId = `goal:${parsed.data.transaction_id}`;
+  const paymentMetadata = buildMetadata(parsed.data);
+  const sanitizedPaymentMetadata = sanitizeMetadataRecord(paymentMetadata) ?? {};
+  const paymentMetrics = metricsForEvent({
+    type: "payment",
+    metadata: sanitizedPaymentMetadata,
   });
+  const eventTimestamp = createdAt.getTime();
+  const visitorIdForPaymentEvent = (
+    parsed.data.visitor_id?.trim() || `payment_${parsed.data.transaction_id}`
+  ).slice(0, 128);
 
-  if (parsed.data.visitor_id) {
-    const paymentMetadata = buildMetadata(parsed.data);
-    const goalMetadata = buildGoalMetadata(parsed.data);
-    const sanitizedPaymentMetadata = sanitizeMetadataRecord(paymentMetadata) ?? {};
-    const sanitizedGoalMetadata = sanitizeMetadataRecord(goalMetadata) ?? {};
-    const timestamp = createdAt.getTime();
+  const result = await db.transaction(async (tx) => {
+    const insertedPayment = await tx
+      .insert(payment)
+      .values({
+        id: paymentId,
+        siteId: authResult.siteId,
+        visitorId: parsed.data.visitor_id ?? null,
+        eventId: paymentEventId,
+        amount: parsed.data.amount,
+        currency: parsed.data.currency,
+        provider: "custom",
+        eventType: parsed.data.refunded
+          ? "refund"
+          : parsed.data.renewal
+            ? "renewal"
+            : "new",
+        transactionId: parsed.data.transaction_id,
+        customerId: parsed.data.customer_id ?? null,
+        email: parsed.data.email ?? null,
+        name: parsed.data.name ?? null,
+        renewal: parsed.data.renewal ?? false,
+        refunded: parsed.data.refunded ?? false,
+        createdAt,
+      })
+      .onConflictDoNothing({
+        target: [payment.siteId, payment.transactionId],
+      })
+      .returning({ id: payment.id });
 
-    await db.insert(rawEvent).values({
-      id: randomUUID(),
-      siteId: authResult.siteId,
-      eventId: null,
-      type: "payment",
-      name: "custom_payment",
-      visitorId: parsed.data.visitor_id,
-      timestamp,
-      metadata: sanitizedPaymentMetadata,
-      createdAt,
-    });
+    if (insertedPayment.length === 0) {
+      return { ok: true as const, deduped: true as const };
+    }
 
-    await db.insert(rawEvent).values({
-      id: randomUUID(),
-      siteId: authResult.siteId,
-      eventId: null,
-      type: "goal",
-      name: getGoalName(parsed.data.amount),
-      visitorId: parsed.data.visitor_id,
-      timestamp,
-      metadata: sanitizedGoalMetadata,
-      createdAt,
-    });
-
-    const paymentMetrics = metricsForEvent({
-      type: "payment",
-      metadata: sanitizedPaymentMetadata,
-    });
-    const goalMetrics = metricsForEvent({ type: "goal", metadata: sanitizedGoalMetadata });
+    await tx
+      .insert(rawEvent)
+      .values({
+        id: randomUUID(),
+        siteId: authResult.siteId,
+        eventId: paymentEventId,
+        type: "payment",
+        name: "custom_payment",
+        visitorId: visitorIdForPaymentEvent,
+        timestamp: eventTimestamp,
+        metadata: sanitizedPaymentMetadata,
+        createdAt,
+      })
+      .onConflictDoNothing({
+        target: [rawEvent.siteId, rawEvent.eventId],
+      });
 
     await upsertRollups({
+      db: tx,
       siteId: authResult.siteId,
       timestamp: createdAt,
       metrics: paymentMetrics,
     });
 
-    await upsertRollups({
-      siteId: authResult.siteId,
-      timestamp: createdAt,
-      metrics: goalMetrics,
-    });
+    if (parsed.data.visitor_id) {
+      const goalMetadata = buildGoalMetadata(parsed.data);
+      const sanitizedGoalMetadata = sanitizeMetadataRecord(goalMetadata) ?? {};
+      const goalMetrics = metricsForEvent({ type: "goal", metadata: sanitizedGoalMetadata });
 
-    await upsertDimensionRollups({
-      siteId: authResult.siteId,
-      timestamp: createdAt,
-      metrics: goalMetrics,
-      dimensions: extractDimensionRollups({
-        type: "goal",
-        name: getGoalName(parsed.data.amount),
-      }),
-    });
-  }
+      await tx
+        .insert(rawEvent)
+        .values({
+          id: randomUUID(),
+          siteId: authResult.siteId,
+          eventId: goalEventId,
+          type: "goal",
+          name: getGoalName(parsed.data.amount),
+          visitorId: parsed.data.visitor_id,
+          timestamp: eventTimestamp,
+          metadata: sanitizedGoalMetadata,
+          createdAt,
+        })
+        .onConflictDoNothing({
+          target: [rawEvent.siteId, rawEvent.eventId],
+        });
 
-  return NextResponse.json({ ok: true });
+      await upsertRollups({
+        db: tx,
+        siteId: authResult.siteId,
+        timestamp: createdAt,
+        metrics: goalMetrics,
+      });
+
+      await upsertDimensionRollups({
+        db: tx,
+        siteId: authResult.siteId,
+        timestamp: createdAt,
+        metrics: goalMetrics,
+        dimensions: extractDimensionRollups({
+          type: "goal",
+          name: getGoalName(parsed.data.amount),
+        }),
+      });
+    }
+
+    return { ok: true as const };
+  });
+
+  return NextResponse.json(result);
 };

@@ -1,40 +1,444 @@
 "use client";
 
-import { Features } from "@/components/marketing/features";
-import { Hero } from "@/components/marketing/hero";
-import { Pricing } from "@/components/marketing/pricing";
+import React, { useState } from "react";
+import type { ReactNode } from "react";
+import Link from "next/link";
+import {
+  Activity,
+  ArrowRight,
+  BarChart,
+  Database,
+  PieChart,
+  TrendingUp,
+  Users,
+  Zap,
+} from "lucide-react";
+import { DemoDashboard } from "@/components/marketing/demo-dashboard";
+import { authClient } from "@/lib/auth-client";
 
 export default function Home() {
-  return (
-    <div className="flex flex-col min-h-screen">
-      <Hero />
-      <Features />
-      <Pricing />
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const { data: session, isPending } = authClient.useSession();
 
-      <footer className="py-12 px-6 border-t bg-muted/20">
-        <div className="container mx-auto flex flex-col md:flex-row justify-between items-center gap-6 text-sm text-muted-foreground">
-          <div>
-            © {new Date().getFullYear()} Ezlytics. Open Source Apache-2.0.
+  return (
+    <div className="min-h-screen bg-[#f4f4f0] text-black font-sans selection:bg-pink-400 selection:text-black overflow-x-hidden">
+      {/* Navigation */}
+      <nav className="sticky top-0 z-50 flex items-center justify-between p-4 md:p-6 border-b-4 border-black bg-[#ffde59]/10">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-amber-500/70 border-4 border-black shadow-[4px_4px_0px_0px_black]">
+            <Activity
+              className="w-6 h-6 md:w-8 md:h-8 font-black"
+              strokeWidth={3}
+            />
           </div>
-          <div className="flex gap-6">
+          <span className="text-2xl md:text-3xl font-black uppercase tracking-tighter">
+            Ezlytics
+          </span>
+        </div>
+
+        {/* Desktop Menu */}
+        <div className="hidden md:flex items-center gap-8 font-bold text-lg uppercase tracking-wide">
+          <a
+            href="#features"
+            className="hover:underline decoration-4 underline-offset-4 hover:text-pink-600 transition-colors"
+          >
+            Features
+          </a>
+          <a
+            href="#pricing"
+            className="hover:underline decoration-4 underline-offset-4 hover:text-pink-600 transition-colors"
+          >
+            Pricing
+          </a>
+          <a
+            href="/docs"
+            className="hover:underline decoration-4 underline-offset-4 hover:text-pink-600 transition-colors"
+          >
+            Docs
+          </a>
+        </div>
+
+        <div className="hidden md:flex items-center gap-4">
+          {isPending ? (
+            <div className="h-10 w-24 bg-black/10 animate-pulse border-4 border-black"></div>
+          ) : session ? (
+            <Link
+              href="/dashboard"
+              className="px-6 py-2 flex items-center justify-center font-bold text-lg uppercase bg-white border-4 border-black shadow-[4px_4px_0px_0px_black] hover:translate-x-[4px] hover:translate-y-[4px] hover:shadow-none transition-all duration-200"
+            >
+              Dashboard
+            </Link>
+          ) : (
+            <>
+              <Link
+                href="/login"
+                className="px-6 py-2 flex items-center justify-center font-bold text-lg uppercase bg-white border-4 border-black shadow-[4px_4px_0px_0px_black] hover:translate-x-[4px] hover:translate-y-[4px] hover:shadow-none transition-all duration-200"
+              >
+                Login
+              </Link>
+              <Link
+                href="/dashboard/new"
+                className="px-6 py-2 flex items-center justify-center font-bold text-lg uppercase text-white bg-black border-4 border-black shadow-[4px_4px_0px_0px_black] hover:translate-x-[4px] hover:translate-y-[4px] hover:shadow-none transition-all duration-200"
+              >
+                Sign Up
+              </Link>
+            </>
+          )}
+        </div>
+
+        {/* Mobile Menu Toggle */}
+        <button
+          className="md:hidden p-2 bg-white border-4 border-black shadow-[4px_4px_0px_0px_black] active:translate-x-[4px] active:translate-y-[4px] active:shadow-none"
+          onClick={() => setIsMenuOpen(!isMenuOpen)}
+        >
+          <div className="w-6 h-1 bg-black mb-1"></div>
+          <div className="w-6 h-1 bg-black mb-1"></div>
+          <div className="w-6 h-1 bg-black"></div>
+        </button>
+      </nav>
+
+      {/* Mobile Menu Dropdown */}
+      {isMenuOpen && (
+        <div className="md:hidden border-b-4 border-black bg-white p-6 flex flex-col gap-4 font-bold uppercase text-xl">
+          <a href="#features" className="border-b-2 border-black pb-2">
+            Features
+          </a>
+          <a href="#pricing" className="border-b-2 border-black pb-2">
+            Pricing
+          </a>
+          {session ? (
+            <Link
+              href="/dashboard"
+              className="w-full flex justify-center py-3 mt-4 bg-[#ffde59] border-4 border-black shadow-[4px_4px_0px_0px_black]"
+            >
+              Dashboard
+            </Link>
+          ) : (
+            <Link
+              href="/dashboard/new"
+              className="w-full flex justify-center py-3 mt-4 bg-[#ffde59] border-4 border-black shadow-[4px_4px_0px_0px_black]"
+            >
+              Sign Up Now
+            </Link>
+          )}
+        </div>
+      )}
+
+      {/* Hero Section */}
+      <header className="px-4 py-16 md:py-32 grid lg:grid-cols-2 gap-12 items-center max-w-7xl mx-auto">
+        <div className="space-y-8 relative z-10">
+          <div className="inline-block px-4 py-2 bg-[#ff914d] border-4 border-black shadow-[4px_4px_0px_0px_black] transform -rotate-2 font-bold uppercase tracking-wider mb-4">
+            🚀 The Open-Source Revenue Analytics
+          </div>
+          <h1 className="text-6xl md:text-8xl font-black leading-[0.9] uppercase tracking-tighter">
+            Revenue-first <br />
+            <span className="bg-[#38b6ff] px-2 border-4 border-black shadow-[6px_6px_0px_0px_black] inline-block transform rotate-1 mt-4">
+              analytics.
+            </span>
+          </h1>
+          <p className="text-xl md:text-2xl font-bold max-w-lg border-l-8 border-black pl-6 py-2 bg-white/50">
+            Discover which marketing channels bring customers so you can grow
+            your business, fast.
+          </p>
+          <div className="flex flex-col sm:flex-row gap-6 pt-4">
+            <Link
+              href={session ? "/dashboard" : "/dashboard/new"}
+              className="group flex items-center justify-center gap-3 px-8 py-4 text-xl font-black uppercase text-black bg-[#cb6ce6] border-4 border-black shadow-[8px_8px_0px_0px_black] hover:translate-x-[8px] hover:translate-y-[8px] hover:shadow-none transition-all duration-200"
+            >
+              {session ? "Go to Dashboard" : "Start Free Trial"}{" "}
+              <ArrowRight
+                className="w-6 h-6 group-hover:translate-x-2 transition-transform"
+                strokeWidth={3}
+              />
+            </Link>
             <a
               href="https://github.com/ralph/ezlytics"
-              className="hover:text-foreground transition-colors"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-8 py-4 flex justify-center text-xl font-black uppercase bg-white border-4 border-black shadow-[8px_8px_0px_0px_black] hover:translate-x-[8px] hover:translate-y-[8px] hover:shadow-none transition-all duration-200"
             >
               GitHub
             </a>
-            <a href="/docs" className="hover:text-foreground transition-colors">
-              Documentation
-            </a>
-            <a
-              href="/login"
-              className="hover:text-foreground transition-colors"
-            >
-              Login
-            </a>
           </div>
         </div>
+
+        {/* Hero Visual - Brutalist Chart */}
+        <div className="relative h-[400px] md:h-[500px] bg-[#f4f4f0] border-4 border-black shadow-[16px_16px_0px_0px_black] p-6 md:p-10 flex flex-col justify-end overflow-hidden transform md:rotate-2 hover:rotate-0 transition-transform duration-300">
+          {/* Decorative Grid Background */}
+          <div
+            className="absolute inset-0 opacity-20 pointer-events-none"
+            style={{
+              backgroundImage: "radial-gradient(#000 2px, transparent 2px)",
+              backgroundSize: "20px 20px",
+            }}
+          ></div>
+
+          <div className="absolute top-6 left-6 bg-white border-4 border-black px-4 py-2 shadow-[4px_4px_0px_0px_black] font-bold z-10 flex items-center gap-2">
+            <TrendingUp className="text-green-500" strokeWidth={3} /> +1,420%
+            MRR
+          </div>
+
+          {/* Abstract Chart Bars */}
+          <div className="flex items-end justify-between w-full h-[80%] gap-3 md:gap-6 relative z-0">
+            <div className="w-full bg-[#ff914d] border-4 border-black h-[40%] shadow-[4px_4px_0px_0px_black] hover:h-[50%] transition-all duration-300 relative group">
+              <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-black text-white px-2 py-1 text-sm font-bold opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                Q1: $12k
+              </div>
+            </div>
+            <div className="w-full bg-[#ffde59] border-4 border-black h-[60%] shadow-[4px_4px_0px_0px_black] hover:h-[70%] transition-all duration-300 relative group">
+              <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-black text-white px-2 py-1 text-sm font-bold opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                Q2: $45k
+              </div>
+            </div>
+            <div className="w-full bg-white border-4 border-black h-[50%] shadow-[4px_4px_0px_0px_black] hover:h-[60%] transition-all duration-300 relative group">
+              <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-black text-white px-2 py-1 text-sm font-bold opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                Q3: $38k
+              </div>
+            </div>
+            <div className="w-full bg-[#00bf63] border-4 border-black h-[90%] shadow-[4px_4px_0px_0px_black] hover:h-[100%] transition-all duration-300 relative group">
+              <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-black text-white px-2 py-1 text-sm font-bold opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                Q4: $120k!
+              </div>
+            </div>
+          </div>
+
+          {/* X Axis Line */}
+          <div className="w-full h-2 bg-black mt-2"></div>
+        </div>
+      </header>
+
+      {/* Marquee Section */}
+      <div className="w-full bg-black text-white py-4 overflow-hidden border-y-4 border-black flex items-center">
+        <div className="whitespace-nowrap animate-marquee flex gap-8 items-center font-black text-2xl md:text-4xl uppercase tracking-widest">
+          <span>OPEN SOURCE ANALYTICS</span>
+          <span className="text-[#ffde59]">★</span>
+          <span>OWN YOUR DATA</span>
+          <span className="text-[#ffde59]">★</span>
+          <span>REVENUE FOCUSED</span>
+          <span className="text-[#ffde59]">★</span>
+          <span>OPEN SOURCE ANALYTICS</span>
+          <span className="text-[#ffde59]">★</span>
+          <span>OWN YOUR DATA</span>
+          <span className="text-[#ffde59]">★</span>
+        </div>
+      </div>
+
+      {/* Demo Section */}
+      <section className="py-24 px-4 bg-[#ffde59] border-b-4 border-black overflow-hidden relative">
+        <div
+          className="absolute inset-0 opacity-10 pointer-events-none"
+          style={{
+            backgroundImage: "radial-gradient(#000 2px, transparent 2px)",
+            backgroundSize: "20px 20px",
+          }}
+        ></div>
+        <div className="max-w-7xl mx-auto relative z-10">
+          <div className="flex flex-col items-center text-center mb-16">
+            <h2 className="text-5xl md:text-7xl font-black uppercase tracking-tighter mb-4 bg-white px-6 py-2 border-4 border-black shadow-[8px_8px_0px_0px_black] transform rotate-1">
+              Live Demo
+            </h2>
+          </div>
+          <div className="border-4 border-black shadow-[16px_16px_0px_0px_black] bg-white transform -rotate-1 hover:rotate-0 transition-transform duration-300">
+            <DemoDashboard />
+          </div>
+        </div>
+      </section>
+
+      {/* How it Works Section */}
+      <section className="py-24 px-4 bg-[#f4f4f0] border-b-4 border-black">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-col items-center text-center mb-20">
+            <h2 className="text-5xl md:text-7xl font-black uppercase tracking-tighter mb-6 bg-white px-6 py-2 border-4 border-black shadow-[8px_8px_0px_0px_black] transform -rotate-1">
+              How it works?
+            </h2>
+            <p className="text-2xl font-bold bg-[#ffde59] border-4 border-black inline-block px-6 py-3 shadow-[6px_6px_0px_0px_black] transform rotate-1">
+              Find revenue opportunities in 3 steps
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-12 mt-8">
+            {/* Step 1 */}
+            <div className="border-4 border-black p-8 bg-white shadow-[12px_12px_0px_0px_black] relative hover:-translate-y-2 transition-transform duration-300">
+              <div className="absolute -top-8 -left-8 w-16 h-16 bg-[#00bf63] border-4 border-black flex items-center justify-center text-4xl font-black shadow-[4px_4px_0px_0px_black] transform -rotate-6">
+                1
+              </div>
+              <h3 className="text-3xl font-black uppercase mt-4 mb-4">
+                Install Script
+              </h3>
+              <p className="font-bold text-lg text-gray-800">
+                You'll see beautiful web analytics in 1 minute. Oh, and our
+                open-source script loads super fast (4kb).
+              </p>
+            </div>
+            {/* Step 2 */}
+            <div className="border-4 border-black p-8 bg-white shadow-[12px_12px_0px_0px_black] relative hover:-translate-y-2 transition-transform duration-300 md:mt-12">
+              <div className="absolute -top-8 -left-8 w-16 h-16 bg-[#38b6ff] border-4 border-black flex items-center justify-center text-4xl font-black shadow-[4px_4px_0px_0px_black] transform rotate-3">
+                2
+              </div>
+              <h3 className="text-3xl font-black uppercase mt-4 mb-4">
+                Connect Revenue
+              </h3>
+              <p className="font-bold text-lg text-gray-800">
+                Link your favorite payment processor so we can attribute revenue
+                to your traffic sources.
+              </p>
+            </div>
+            {/* Step 3 */}
+            <div className="border-4 border-black p-8 bg-white shadow-[12px_12px_0px_0px_black] relative hover:-translate-y-2 transition-transform duration-300 md:mt-24">
+              <div className="absolute -top-8 -left-8 w-16 h-16 bg-[#cb6ce6] border-4 border-black flex items-center justify-center text-4xl font-black shadow-[4px_4px_0px_0px_black] transform -rotate-3">
+                3
+              </div>
+              <h3 className="text-3xl font-black uppercase mt-4 mb-4">
+                Grow Business
+              </h3>
+              <p className="font-bold text-lg text-gray-800">
+                We analyze your funnel to find what makes people buy, and tell
+                you exactly how to get more of them.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Features Grid */}
+      <section
+        id="features"
+        className="bg-[#ff914d] py-24 border-b-4 border-black"
+      >
+        <div className="max-w-7xl mx-auto px-4 md:px-6">
+          <div className="flex flex-col items-center mb-16 text-center">
+            <h2 className="text-5xl md:text-7xl font-black uppercase tracking-tighter bg-white px-6 py-2 border-4 border-black shadow-[8px_8px_0px_0px_black] transform -rotate-1">
+              Features
+            </h2>
+            <p className="mt-8 text-2xl font-bold max-w-2xl bg-black text-white p-4 border-4 border-black transform rotate-1">
+              Everything you need to scale. Nothing you don't.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8 md:gap-12 pt-8">
+            <FeatureCard
+              icon={<Zap className="w-12 h-12" strokeWidth={2.5} />}
+              title="Real-Time Sync"
+              desc="Your data updates instantly. No refreshing, no waiting around for crons to run."
+              color="bg-[#ffde59]"
+            />
+            <FeatureCard
+              icon={<Database className="w-12 h-12" strokeWidth={2.5} />}
+              title="1-Click Export"
+              desc="Take your data anywhere. Export to CSV, JSON, or pipe it directly to your warehouse."
+              color="bg-[#00bf63]"
+            />
+            <FeatureCard
+              icon={<Activity className="w-12 h-12" strokeWidth={2.5} />}
+              title="Super Fast Script"
+              desc="Only 4kb. Won't slow down your site and respects your users' bandwidth."
+              color="bg-[#38b6ff]"
+            />
+            <FeatureCard
+              icon={<TrendingUp className="w-12 h-12" strokeWidth={2.5} />}
+              title="Revenue Tracking"
+              desc="Attribute every dollar to the exact marketing channel that brought the customer in."
+              color="bg-white"
+            />
+            <FeatureCard
+              icon={<PieChart className="w-12 h-12" strokeWidth={2.5} />}
+              title="Funnel Analysis"
+              desc="Identify exactly where users drop off and patch the leaky buckets in your flow."
+              color="bg-[#cb6ce6]"
+            />
+            <FeatureCard
+              icon={<Users className="w-12 h-12" strokeWidth={2.5} />}
+              title="Fully Open Source"
+              desc="Host it yourself. You own 100% of your data and can inspect every line of code."
+              color="bg-[#ff5757]"
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* Social Proof / Quote */}
+      <section className="py-24 px-4 bg-[#f4f4f0]">
+        <div className="max-w-4xl mx-auto">
+          <div className="bg-white border-4 border-black p-8 md:p-12 shadow-[16px_16px_0px_0px_black] relative">
+            <div className="absolute -top-8 -left-8 text-8xl font-black text-[#ffde59] drop-shadow-[4px_4px_0px_black]">
+              "
+            </div>
+            <p className="text-3xl md:text-5xl font-black uppercase leading-tight tracking-tighter mb-8">
+              Since switching to Ezlytics, our conversion rate doubled. I fired
+              my data scientist yesterday.
+            </p>
+            <div className="flex items-center gap-4">
+              <div className="w-16 h-16 bg-[#cb6ce6] border-4 border-black shadow-[4px_4px_0px_0px_black]"></div>
+              <div>
+                <p className="text-xl font-black uppercase">Sarah Jenkins</p>
+                <p className="font-bold text-gray-600">CEO, TechBrute</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Footer CTA */}
+      <footer className="py-32 px-4 text-center bg-[#38b6ff] border-t-4 border-black relative overflow-hidden">
+        {/* Background decorative elements */}
+        <div className="absolute top-10 left-10 w-32 h-32 bg-[#ffde59] rounded-full border-4 border-black shadow-[8px_8px_0px_0px_black] animate-pulse"></div>
+        <div className="absolute bottom-10 right-10 w-24 h-24 bg-[#ff5757] border-4 border-black shadow-[8px_8px_0px_0px_black] rotate-45"></div>
+
+        <div className="max-w-3xl mx-auto relative z-10 flex flex-col items-center">
+          <h2 className="text-6xl md:text-8xl font-black uppercase tracking-tighter mb-8 bg-black text-white inline-block p-4 transform -rotate-2">
+            Ready to crush it?
+          </h2>
+          <p className="text-2xl font-bold mb-12 bg-white px-6 py-2 border-4 border-black inline-block shadow-[6px_6px_0px_0px_black]">
+            Join 10,000+ companies making data-driven decisions.
+          </p>
+          <Link
+            href={session ? "/dashboard" : "/dashboard/new"}
+            className="text-2xl md:text-4xl px-12 py-6 font-black uppercase bg-[#00bf63] border-4 border-black shadow-[12px_12px_0px_0px_black] hover:translate-x-[12px] hover:translate-y-[12px] hover:shadow-none transition-all duration-200"
+          >
+            {session ? "Go to Dashboard" : "Get Started Free"}
+          </Link>
+          <p className="mt-6 font-bold uppercase tracking-wider text-black/70">
+            No credit card required. Cancel anytime.
+          </p>
+        </div>
       </footer>
+
+      {/* Tiny Footer */}
+      <div className="bg-black text-white text-center py-6 font-bold uppercase tracking-widest text-sm border-t-4 border-black">
+        © {new Date().getFullYear()} Ezlytics | Open Source Apache-2.0.
+      </div>
     </div>
   );
 }
+
+// Reusable Feature Card Component
+const FeatureCard = ({
+  icon,
+  title,
+  desc,
+  color,
+}: {
+  icon: ReactNode;
+  title: string;
+  desc: string;
+  color: string;
+}) => {
+  return (
+    <div
+      className={`
+      ${color} border-4 border-black p-8 
+      shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] 
+      hover:translate-x-[8px] hover:translate-y-[8px] hover:shadow-none 
+      transition-all duration-200 flex flex-col h-full
+    `}
+    >
+      <div className="mb-6 bg-white w-20 h-20 flex items-center justify-center border-4 border-black shadow-[4px_4px_0px_0px_black]">
+        {icon}
+      </div>
+      <h3 className="text-3xl font-black uppercase tracking-tight mb-4">
+        {title}
+      </h3>
+      <p className="text-lg font-bold leading-snug">{desc}</p>
+    </div>
+  );
+};

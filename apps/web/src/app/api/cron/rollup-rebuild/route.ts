@@ -45,6 +45,11 @@ const handler = async (request: NextRequest) => {
   const dryRun =
     searchParams.get("dryRun") === "true" ||
     searchParams.get("dry_run") === "true";
+  const includeDiff =
+    searchParams.get("diff") === "true" ||
+    searchParams.get("includeDiff") === "true" ||
+    searchParams.get("include_diff") === "true" ||
+    dryRun;
 
   const fromParam = parseDateParam(searchParams.get("from"), "from");
   if (!fromParam.ok) {
@@ -61,6 +66,7 @@ const handler = async (request: NextRequest) => {
       from: fromParam.value,
       to: toParam.value,
       dryRun,
+      includeDiff,
     });
     return NextResponse.json(result);
   } catch (error) {

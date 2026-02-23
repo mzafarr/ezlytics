@@ -1,5 +1,5 @@
 import { relations } from "drizzle-orm";
-import { boolean, index, integer, pgEnum, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, index, integer, pgEnum, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 import { site } from "./site";
 
@@ -31,6 +31,7 @@ export const payment = pgTable(
     index("payment_visitorId_idx").on(table.visitorId),
     index("payment_eventId_idx").on(table.eventId),
     index("payment_transactionId_idx").on(table.transactionId),
+    uniqueIndex("payment_site_transaction_unique_idx").on(table.siteId, table.transactionId),
   ],
 );
 

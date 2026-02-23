@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 
 import { BRAND_DESCRIPTION, BRAND_NAME } from "@my-better-t-app/config/brand";
-import { Oxanium, Source_Code_Pro } from "next/font/google";
+import { Space_Grotesk, Source_Code_Pro } from "next/font/google";
 
 import "../index.css";
 import Header from "@/components/header";
 import Providers from "@/components/providers";
 
-const oxanium = Oxanium({
+const spaceGrotesk = Space_Grotesk({
   variable: "--font-sans",
   subsets: ["latin"],
   display: "swap",
@@ -32,7 +32,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${oxanium.variable} ${sourceCodePro.variable} antialiased`}
+        className={`${spaceGrotesk.variable} ${sourceCodePro.variable} antialiased`}
       >
         <Providers>
           <div className="flex flex-col min-h-svh">
