@@ -32,7 +32,7 @@
     if (!srcUrl) return "";
     try {
       var parsed = new URL(srcUrl);
-      return parsed.origin + "/api/events";
+      return parsed.origin + "/api/v1/ingest";
     } catch (e) {
       return "";
     }
@@ -309,7 +309,7 @@
   var SESSION_TTL = 60 * 30;
   var EVENT_ENDPOINT = normalizeApiUrl(
     apiUrlRaw,
-    deriveApiUrl(scriptSrc) || "/api/events",
+    deriveApiUrl(scriptSrc) || "/api/v1/ingest",
   );
   var COOKIE_DOMAIN = resolveCookieDomain(domain);
   var lastPath = null;
