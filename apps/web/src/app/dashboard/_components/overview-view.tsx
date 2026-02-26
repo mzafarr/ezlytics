@@ -148,7 +148,7 @@ function ReferrerIcon({ label }: { label: string }) {
   }
   return (
     <img
-      src={`https://www.google.com/s2/favicons?domain=${domain}&sz=32`}
+      src={`/api/favicon?domain=${encodeURIComponent(domain)}`}
       alt={domain}
       className="h-4 w-4 flex-shrink-0 rounded-sm"
       onError={() => setError(true)}

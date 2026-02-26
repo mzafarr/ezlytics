@@ -1,5 +1,6 @@
 {
   "name": "@my-better-t-app/api",
+  "license": "MIT",
   "type": "module",
   "exports": {
     ".": {

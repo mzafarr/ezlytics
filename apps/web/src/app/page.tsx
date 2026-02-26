@@ -6,18 +6,21 @@ import Link from "next/link";
 import {
   Activity,
   ArrowRight,
-  BarChart,
   Database,
   PieChart,
-  TrendingUp,
   Users,
   Zap,
+  Check,
+  TrendingUp,
 } from "lucide-react";
 import { DemoDashboard } from "@/components/marketing/demo-dashboard";
+import { Pricing } from "@/components/marketing/pricing";
 import { authClient } from "@/lib/auth-client";
+import { env } from "@my-better-t-app/env/web";
 
 export default function Home() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const ossOnly = env.NEXT_PUBLIC_OSS_ONLY === "true";
   const { data: session, isPending } = authClient.useSession();
 
   return (
@@ -44,12 +47,14 @@ export default function Home() {
           >
             Features
           </a>
-          <a
-            href="#pricing"
-            className="hover:underline decoration-4 underline-offset-4 hover:text-pink-600 transition-colors"
-          >
-            Pricing
-          </a>
+          {!ossOnly && (
+            <a
+              href="#pricing"
+              className="hover:underline decoration-4 underline-offset-4 hover:text-pink-600 transition-colors"
+            >
+              Pricing
+            </a>
+          )}
           <a
             href="/docs"
             className="hover:underline decoration-4 underline-offset-4 hover:text-pink-600 transition-colors"
@@ -68,6 +73,15 @@ export default function Home() {
             >
               Dashboard
             </Link>
+          ) : ossOnly ? (
+            <a
+              href="https://github.com/ralph/ezlytics"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-6 py-2 flex items-center justify-center font-bold text-lg uppercase bg-white border-4 border-black shadow-[4px_4px_0px_0px_black] hover:translate-x-[4px] hover:translate-y-[4px] hover:shadow-none transition-all duration-200"
+            >
+              GitHub
+            </a>
           ) : (
             <>
               <Link
@@ -103,9 +117,11 @@ export default function Home() {
           <a href="#features" className="border-b-2 border-black pb-2">
             Features
           </a>
-          <a href="#pricing" className="border-b-2 border-black pb-2">
-            Pricing
-          </a>
+          {!ossOnly && (
+            <a href="#pricing" className="border-b-2 border-black pb-2">
+              Pricing
+            </a>
+          )}
           {session ? (
             <Link
               href="/dashboard"
@@ -113,6 +129,15 @@ export default function Home() {
             >
               Dashboard
             </Link>
+          ) : ossOnly ? (
+            <a
+              href="https://github.com/ralph/ezlytics"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full flex justify-center py-3 mt-4 bg-[#ffde59] border-4 border-black shadow-[4px_4px_0px_0px_black]"
+            >
+              GitHub →
+            </a>
           ) : (
             <Link
               href="/dashboard/new"
@@ -141,16 +166,23 @@ export default function Home() {
             your business, fast.
           </p>
           <div className="flex flex-col sm:flex-row gap-6 pt-4">
-            <Link
-              href={session ? "/dashboard" : "/dashboard/new"}
-              className="group flex items-center justify-center gap-3 px-8 py-4 text-xl font-black uppercase text-black bg-[#cb6ce6] border-4 border-black shadow-[8px_8px_0px_0px_black] hover:translate-x-[8px] hover:translate-y-[8px] hover:shadow-none transition-all duration-200"
-            >
-              {session ? "Go to Dashboard" : "Start Free Trial"}{" "}
-              <ArrowRight
-                className="w-6 h-6 group-hover:translate-x-2 transition-transform"
-                strokeWidth={3}
-              />
-            </Link>
+            {session ? (
+              <Link
+                href="/dashboard"
+                className="group flex items-center justify-center gap-3 px-8 py-4 text-xl font-black uppercase text-black bg-[#cb6ce6] border-4 border-black shadow-[8px_8px_0px_0px_black] hover:translate-x-[8px] hover:translate-y-[8px] hover:shadow-none transition-all duration-200"
+              >
+                Go to Dashboard{" "}
+                <ArrowRight className="w-6 h-6 group-hover:translate-x-2 transition-transform" strokeWidth={3} />
+              </Link>
+            ) : !ossOnly ? (
+              <Link
+                href="/dashboard/new"
+                className="group flex items-center justify-center gap-3 px-8 py-4 text-xl font-black uppercase text-black bg-[#cb6ce6] border-4 border-black shadow-[8px_8px_0px_0px_black] hover:translate-x-[8px] hover:translate-y-[8px] hover:shadow-none transition-all duration-200"
+              >
+                Start Free Trial{" "}
+                <ArrowRight className="w-6 h-6 group-hover:translate-x-2 transition-transform" strokeWidth={3} />
+              </Link>
+            ) : null}
             <a
               href="https://github.com/ralph/ezlytics"
               target="_blank"
@@ -162,48 +194,47 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Hero Visual - Brutalist Chart */}
-        <div className="relative h-[400px] md:h-[500px] bg-[#f4f4f0] border-4 border-black shadow-[16px_16px_0px_0px_black] p-6 md:p-10 flex flex-col justify-end overflow-hidden transform md:rotate-2 hover:rotate-0 transition-transform duration-300">
-          {/* Decorative Grid Background */}
-          <div
-            className="absolute inset-0 opacity-20 pointer-events-none"
-            style={{
-              backgroundImage: "radial-gradient(#000 2px, transparent 2px)",
-              backgroundSize: "20px 20px",
-            }}
-          ></div>
-
-          <div className="absolute top-6 left-6 bg-white border-4 border-black px-4 py-2 shadow-[4px_4px_0px_0px_black] font-bold z-10 flex items-center gap-2">
-            <TrendingUp className="text-green-500" strokeWidth={3} /> +1,420%
-            MRR
-          </div>
-
-          {/* Abstract Chart Bars */}
-          <div className="flex items-end justify-between w-full h-[80%] gap-3 md:gap-6 relative z-0">
-            <div className="w-full bg-[#ff914d] border-4 border-black h-[40%] shadow-[4px_4px_0px_0px_black] hover:h-[50%] transition-all duration-300 relative group">
-              <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-black text-white px-2 py-1 text-sm font-bold opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                Q1: $12k
-              </div>
+        {/* Hero Visual - Code Snippet Card */}
+        <div className="relative flex flex-col gap-4 transform md:rotate-1 hover:rotate-0 transition-transform duration-300">
+          {/* Card */}
+          <div className="border-4 border-black bg-black shadow-[12px_12px_0px_0px_black] overflow-hidden">
+            {/* Terminal header */}
+            <div className="flex items-center gap-2 px-4 py-3 bg-[#1a1a1a] border-b-4 border-black">
+              <div className="w-3 h-3 rounded-full bg-[#ff5757] border-2 border-black"></div>
+              <div className="w-3 h-3 rounded-full bg-[#ffde59] border-2 border-black"></div>
+              <div className="w-3 h-3 rounded-full bg-[#00bf63] border-2 border-black"></div>
+              <span className="ml-2 text-xs font-bold text-white/40 uppercase tracking-widest">install.html</span>
             </div>
-            <div className="w-full bg-[#ffde59] border-4 border-black h-[60%] shadow-[4px_4px_0px_0px_black] hover:h-[70%] transition-all duration-300 relative group">
-              <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-black text-white px-2 py-1 text-sm font-bold opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                Q2: $45k
-              </div>
-            </div>
-            <div className="w-full bg-white border-4 border-black h-[50%] shadow-[4px_4px_0px_0px_black] hover:h-[60%] transition-all duration-300 relative group">
-              <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-black text-white px-2 py-1 text-sm font-bold opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                Q3: $38k
-              </div>
-            </div>
-            <div className="w-full bg-[#00bf63] border-4 border-black h-[90%] shadow-[4px_4px_0px_0px_black] hover:h-[100%] transition-all duration-300 relative group">
-              <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-black text-white px-2 py-1 text-sm font-bold opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
-                Q4: $120k!
-              </div>
+            {/* Code */}
+            <div className="p-6 md:p-8 font-mono text-sm md:text-base leading-relaxed">
+              <p className="text-white/40 text-xs uppercase tracking-widest mb-4">// Step 1 — paste this before &lt;/body&gt;</p>
+              <p className="text-[#ffde59]">
+                <span className="text-white/50">&lt;</span>
+                <span className="text-[#38b6ff]">script</span>
+              </p>
+              <p className="pl-6 text-[#00bf63]">
+                src=<span className="text-[#ff914d]">&quot;https://ezlytics.io/s.js&quot;</span>
+              </p>
+              <p className="pl-6 text-[#00bf63]">
+                data-site=<span className="text-[#ff914d]">&quot;YOUR_SITE_ID&quot;</span>
+              </p>
+              <p className="text-white/50">&gt;&lt;/<span className="text-[#38b6ff]">script</span>&gt;</p>
+              <p className="mt-6 text-white/40 text-xs uppercase tracking-widest">// That&apos;s it. Seriously.</p>
             </div>
           </div>
 
-          {/* X Axis Line */}
-          <div className="w-full h-2 bg-black mt-2"></div>
+          {/* Stat badges row */}
+          <div className="flex flex-wrap gap-3">
+            <div className="flex items-center gap-2 bg-[#00bf63] border-4 border-black px-4 py-2 shadow-[4px_4px_0px_0px_black] font-black uppercase text-sm">
+              <Check className="w-4 h-4" strokeWidth={3} /> 4kb script
+            </div>
+            <div className="flex items-center gap-2 bg-[#ffde59] border-4 border-black px-4 py-2 shadow-[4px_4px_0px_0px_black] font-black uppercase text-sm">
+              <Check className="w-4 h-4" strokeWidth={3} /> MIT License
+            </div>
+            <div className="flex items-center gap-2 bg-white border-4 border-black px-4 py-2 shadow-[4px_4px_0px_0px_black] font-black uppercase text-sm">
+              <TrendingUp className="w-4 h-4" strokeWidth={3} /> Revenue-aware
+            </div>
+          </div>
         </div>
       </header>
 
@@ -235,8 +266,11 @@ export default function Home() {
         <div className="max-w-7xl mx-auto relative z-10">
           <div className="flex flex-col items-center text-center mb-16">
             <h2 className="text-5xl md:text-7xl font-black uppercase tracking-tighter mb-4 bg-white px-6 py-2 border-4 border-black shadow-[8px_8px_0px_0px_black] transform rotate-1">
-              Live Demo
+              See it live.
             </h2>
+            <p className="text-xl md:text-2xl font-bold bg-black text-white px-6 py-3 border-4 border-black inline-block shadow-[6px_6px_0px_0px_#38b6ff] transform -rotate-1 mt-2">
+              Real dashboard. Revenue attributed. Zero guessing.
+            </p>
           </div>
           <div className="border-4 border-black shadow-[16px_16px_0px_0px_black] bg-white transform -rotate-1 hover:rotate-0 transition-transform duration-300">
             <DemoDashboard />
@@ -262,12 +296,14 @@ export default function Home() {
               <div className="absolute -top-8 -left-8 w-16 h-16 bg-[#00bf63] border-4 border-black flex items-center justify-center text-4xl font-black shadow-[4px_4px_0px_0px_black] transform -rotate-6">
                 1
               </div>
-              <h3 className="text-3xl font-black uppercase mt-4 mb-4">
-                Install Script
+              <p className="font-bold text-xs uppercase tracking-widest text-gray-400 mt-4 mb-2">~1 minute</p>
+              <h3 className="text-3xl font-black uppercase mb-4">
+                Paste 1 line of JS
               </h3>
               <p className="font-bold text-lg text-gray-800">
-                You'll see beautiful web analytics in 1 minute. Oh, and our
-                open-source script loads super fast (4kb).
+                Drop our 4kb open-source script before your closing{" "}
+                <code className="bg-gray-100 px-1 border-2 border-black text-sm">&lt;/body&gt;</code>{" "}
+                tag and you&apos;re collecting data instantly.
               </p>
             </div>
             {/* Step 2 */}
@@ -275,12 +311,13 @@ export default function Home() {
               <div className="absolute -top-8 -left-8 w-16 h-16 bg-[#38b6ff] border-4 border-black flex items-center justify-center text-4xl font-black shadow-[4px_4px_0px_0px_black] transform rotate-3">
                 2
               </div>
-              <h3 className="text-3xl font-black uppercase mt-4 mb-4">
-                Connect Revenue
+              <p className="font-bold text-xs uppercase tracking-widest text-gray-400 mt-4 mb-2">30 seconds</p>
+              <h3 className="text-3xl font-black uppercase mb-4">
+                Link Stripe
               </h3>
               <p className="font-bold text-lg text-gray-800">
-                Link your favorite payment processor so we can attribute revenue
-                to your traffic sources.
+                Connect your payment processor in one click. We map every
+                transaction back to the exact traffic source that drove it.
               </p>
             </div>
             {/* Step 3 */}
@@ -288,12 +325,13 @@ export default function Home() {
               <div className="absolute -top-8 -left-8 w-16 h-16 bg-[#cb6ce6] border-4 border-black flex items-center justify-center text-4xl font-black shadow-[4px_4px_0px_0px_black] transform -rotate-3">
                 3
               </div>
-              <h3 className="text-3xl font-black uppercase mt-4 mb-4">
-                Grow Business
+              <p className="font-bold text-xs uppercase tracking-widest text-gray-400 mt-4 mb-2">Ongoing</p>
+              <h3 className="text-3xl font-black uppercase mb-4">
+                See what pays
               </h3>
               <p className="font-bold text-lg text-gray-800">
-                We analyze your funnel to find what makes people buy, and tell
-                you exactly how to get more of them.
+                Know exactly which blog post, ad, or tweet made someone a paying
+                customer — and double down on what works.
               </p>
             </div>
           </div>
@@ -356,22 +394,49 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Social Proof / Quote */}
+      {!ossOnly && (
+        <section id="pricing" className="bg-[#f4f4f0] border-b-4 border-black">
+          <Pricing />
+        </section>
+      )}
+
+      {/* Social Proof */}
       <section className="py-24 px-4 bg-[#f4f4f0]">
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-5xl mx-auto space-y-12">
+          {/* Stats row */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+            {[
+              { stat: "4kb", label: "Script Size" },
+              { stat: "<1min", label: "Time to data" },
+              { stat: "MIT", label: "License" },
+              { stat: "100%", label: "Your data" },
+            ].map(({ stat, label }) => (
+              <div
+                key={label}
+                className="border-4 border-black bg-white shadow-[6px_6px_0px_0px_black] p-6 text-center hover:-translate-y-1 hover:shadow-[8px_8px_0px_0px_black] transition-all duration-200"
+              >
+                <p className="text-4xl md:text-5xl font-black tracking-tighter">{stat}</p>
+                <p className="font-bold uppercase tracking-widest text-xs text-gray-500 mt-1">{label}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Quote */}
           <div className="bg-white border-4 border-black p-8 md:p-12 shadow-[16px_16px_0px_0px_black] relative">
             <div className="absolute -top-8 -left-8 text-8xl font-black text-[#ffde59] drop-shadow-[4px_4px_0px_black]">
-              "
+              &ldquo;
             </div>
-            <p className="text-3xl md:text-5xl font-black uppercase leading-tight tracking-tighter mb-8">
+            <p className="text-3xl md:text-4xl font-black uppercase leading-tight tracking-tighter mb-8">
               Since switching to Ezlytics, our conversion rate doubled. I fired
               my data scientist yesterday.
             </p>
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 bg-[#cb6ce6] border-4 border-black shadow-[4px_4px_0px_0px_black]"></div>
+              <div className="w-16 h-16 bg-[#cb6ce6] border-4 border-black shadow-[4px_4px_0px_0px_black] flex items-center justify-center text-white font-black text-xl">
+                SJ
+              </div>
               <div>
                 <p className="text-xl font-black uppercase">Sarah Jenkins</p>
-                <p className="font-bold text-gray-600">CEO, TechBrute</p>
+                <p className="font-bold text-gray-500">CEO, TechBrute</p>
               </div>
             </div>
           </div>
@@ -385,27 +450,51 @@ export default function Home() {
         <div className="absolute bottom-10 right-10 w-24 h-24 bg-[#ff5757] border-4 border-black shadow-[8px_8px_0px_0px_black] rotate-45"></div>
 
         <div className="max-w-3xl mx-auto relative z-10 flex flex-col items-center">
-          <h2 className="text-6xl md:text-8xl font-black uppercase tracking-tighter mb-8 bg-black text-white inline-block p-4 transform -rotate-2">
-            Ready to crush it?
-          </h2>
-          <p className="text-2xl font-bold mb-12 bg-white px-6 py-2 border-4 border-black inline-block shadow-[6px_6px_0px_0px_black]">
-            Join 10,000+ companies making data-driven decisions.
-          </p>
-          <Link
-            href={session ? "/dashboard" : "/dashboard/new"}
-            className="text-2xl md:text-4xl px-12 py-6 font-black uppercase bg-[#00bf63] border-4 border-black shadow-[12px_12px_0px_0px_black] hover:translate-x-[12px] hover:translate-y-[12px] hover:shadow-none transition-all duration-200"
-          >
-            {session ? "Go to Dashboard" : "Get Started Free"}
-          </Link>
-          <p className="mt-6 font-bold uppercase tracking-wider text-black/70">
-            No credit card required. Cancel anytime.
-          </p>
+          {ossOnly ? (
+            <>
+              <h2 className="text-6xl md:text-8xl font-black uppercase tracking-tighter mb-8 bg-black text-white inline-block p-4 transform -rotate-2">
+                100% Open Source.
+              </h2>
+              <p className="text-2xl font-bold mb-12 bg-white px-6 py-2 border-4 border-black inline-block shadow-[6px_6px_0px_0px_black]">
+                Self-host with Docker. Own your data forever.
+              </p>
+              <a
+                href="https://github.com/ralph/ezlytics"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-2xl md:text-4xl px-12 py-6 font-black uppercase bg-[#00bf63] border-4 border-black shadow-[12px_12px_0px_0px_black] hover:translate-x-[12px] hover:translate-y-[12px] hover:shadow-none transition-all duration-200"
+              >
+                View on GitHub →
+              </a>
+              <p className="mt-6 font-bold uppercase tracking-wider text-black/70">
+                Free forever. MIT License.
+              </p>
+            </>
+          ) : (
+            <>
+              <h2 className="text-6xl md:text-8xl font-black uppercase tracking-tighter mb-8 bg-black text-white inline-block p-4 transform -rotate-2">
+                Ready to crush it?
+              </h2>
+              <p className="text-2xl font-bold mb-12 bg-white px-6 py-2 border-4 border-black inline-block shadow-[6px_6px_0px_0px_black]">
+                Join 10,000+ companies making data-driven decisions.
+              </p>
+              <Link
+                href={session ? "/dashboard" : "/dashboard/new"}
+                className="text-2xl md:text-4xl px-12 py-6 font-black uppercase bg-[#00bf63] border-4 border-black shadow-[12px_12px_0px_0px_black] hover:translate-x-[12px] hover:translate-y-[12px] hover:shadow-none transition-all duration-200"
+              >
+                {session ? "Go to Dashboard" : "Get Started Free"}
+              </Link>
+              <p className="mt-6 font-bold uppercase tracking-wider text-black/70">
+                No credit card required. Cancel anytime.
+              </p>
+            </>
+          )}
         </div>
       </footer>
 
       {/* Tiny Footer */}
       <div className="bg-black text-white text-center py-6 font-bold uppercase tracking-widest text-sm border-t-4 border-black">
-        © {new Date().getFullYear()} Ezlytics | Open Source Apache-2.0.
+        © {new Date().getFullYear()} Ezlytics | Open Source MIT.
       </div>
     </div>
   );

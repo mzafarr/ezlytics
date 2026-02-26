@@ -143,3 +143,9 @@ Fix correctness of core analytics metrics (visitors, visitors now, sessions, bou
 
 - Do we want to surface both “unique across range” and “sum of daily” in UI for transparency?
 - Should hourly unique visitors be explicitly supported if we add hourly charts later?
+
+## Launch Fast-Track Tasks (2026-02-24)
+
+- [x] Add launch roadmap doc for post-MVP shipping priorities.
+- [x] Restore landing page pricing section.
+- [x] Update README to proper OSS format and MIT license messaging.

@@ -1,5 +1,6 @@
 {
   "name": "@my-better-t-app/auth",
+  "license": "MIT",
   "type": "module",
   "exports": {
     ".": {

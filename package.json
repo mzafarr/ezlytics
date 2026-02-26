@@ -1,6 +1,7 @@
 {
   "name": "my-better-t-app",
   "private": true,
+  "license": "MIT",
   "workspaces": {
     "packages": [
       "apps/*",

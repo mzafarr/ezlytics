@@ -2,6 +2,7 @@
   "name": "@my-better-t-app/env",
   "version": "0.0.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "exports": {
     "./server": "./src/server.ts",
