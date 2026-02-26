@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronDown, Globe } from "lucide-react";
+import { ChevronDown, Globe, Download } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -30,6 +30,7 @@ type OverviewToolbarProps = {
   chartGranularity: DashboardChartGranularity;
   onGranularityChange: (value: DashboardChartGranularity) => void;
   isRefreshing?: boolean;
+  onExport?: (format: "csv-daily" | "csv-breakdown" | "json") => void;
 };
 
 const normalizeDomain = (value: string) =>
@@ -69,6 +70,7 @@ export function OverviewToolbar({
   chartGranularity,
   onGranularityChange,
   isRefreshing = false,
+  onExport,
 }: OverviewToolbarProps) {
   const [iconError, setIconError] = useState(false);
   const normalizedDomain = normalizeDomain(siteDomain);
@@ -172,6 +174,48 @@ export function OverviewToolbar({
             </DropdownMenuRadioGroup>
           </DropdownMenuContent>
         </DropdownMenu>
+
+        {onExport && (
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                />
+              }
+            >
+              <Download className="h-3.5 w-3.5" />
+              Export
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-48">
+              <div className="px-2 py-1.5 text-xs text-muted-foreground font-medium uppercase tracking-wider">
+                Download data
+              </div>
+              <DropdownMenuSeparator />
+              <button
+                className="relative flex w-full cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground"
+                onClick={() => onExport("csv-daily")}
+              >
+                Daily stats (.csv)
+              </button>
+              <button
+                className="relative flex w-full cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground"
+                onClick={() => onExport("csv-breakdown")}
+              >
+                Breakdown by dimension (.csv)
+              </button>
+              <DropdownMenuSeparator />
+              <button
+                className="relative flex w-full cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground"
+                onClick={() => onExport("json")}
+              >
+                All data (.json)
+              </button>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
       </div>
     </div>
   );

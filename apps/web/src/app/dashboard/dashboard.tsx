@@ -243,6 +243,7 @@ export default function Dashboard({
           onChartGranularityChange={setChartGranularity}
           selectedRangeLabel={selectedRange.label}
           isRefreshing={isRefreshing}
+          dailyEntries={[]}
         />
       </>
     );
@@ -334,6 +335,7 @@ export default function Dashboard({
           onChartGranularityChange={setChartGranularity}
           selectedRangeLabel={selectedRange.label}
           isRefreshing={isRefreshing}
+          dailyEntries={overviewData.dailyEntries}
         />
       </>
     );

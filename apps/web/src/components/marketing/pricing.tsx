@@ -290,7 +290,7 @@ export function Pricing() {
             Self-host with Docker for free, forever.
           </p>
           <a
-            href="https://github.com/ralph/ezlytics"
+            href="https://github.com/mzafarr/ezlytics"
             target="_blank"
             rel="noreferrer"
             className="inline-flex items-center gap-2 mt-4 text-sm font-black uppercase tracking-widest text-foreground border-2 border-black px-5 py-2.5 shadow-[4px_4px_0px_0px_#000] hover:shadow-[6px_6px_0px_0px_#000] hover:-translate-x-0.5 hover:-translate-y-0.5 transition-all bg-background"

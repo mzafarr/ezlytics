@@ -46,7 +46,7 @@ export function Hero() {
             </Button>
           </Link>
           <Link
-            href="https://github.com/ralph/ezlytics"
+            href="https://github.com/mzafarr/ezlytics"
             target="_blank"
             className="w-full sm:w-auto"
           >

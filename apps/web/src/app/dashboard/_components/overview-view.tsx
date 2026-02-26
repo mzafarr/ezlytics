@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, type MouseEvent } from "react";
+import { useCallback, useMemo, useRef, useState, type MouseEvent } from "react";
 import { ComposableMap, Geographies, Geography } from "react-simple-maps";
 
 import { MainChart } from "@/components/dashboard/main-chart";
@@ -19,6 +19,12 @@ import type {
   ChartDatum,
   DashboardOverviewData,
 } from "../use-dashboard-overview-data";
+import {
+  exportAsCSV,
+  exportAsJSON,
+  buildDailyRows,
+  buildDimensionRows,
+} from "@/lib/export";
 import type {
   DashboardChartGranularity,
   DashboardDateRangeKey,
@@ -76,6 +82,8 @@ type DashboardOverviewViewProps = {
   onChartGranularityChange: (value: DashboardChartGranularity) => void;
   selectedRangeLabel: string;
   isRefreshing?: boolean;
+  dailyEntries?: DashboardOverviewData["dailyEntries"];
+  siteDomainExport?: string;
 };
 
 // ─── Color constants (hex so inline styles always resolve) ──────────────────
@@ -367,7 +375,38 @@ export function DashboardOverviewView({
   onChartGranularityChange,
   selectedRangeLabel,
   isRefreshing = false,
+  dailyEntries = [],
+  siteDomainExport,
 }: DashboardOverviewViewProps) {
+  const exportFilename = (siteDomainExport ?? siteDomain).replace(
+    /[^a-z0-9]/gi,
+    "-",
+  );
+
+  const handleExport = useCallback(
+    (format: "csv-daily" | "csv-breakdown" | "json") => {
+      if (format === "csv-daily") {
+        exportAsCSV(buildDailyRows(dailyEntries as any), `${exportFilename}-daily`);
+      } else if (format === "csv-breakdown") {
+        exportAsCSV(
+          buildDimensionRows(dimensionVisitorTotals, dimensionRevenueTotals),
+          `${exportFilename}-breakdown`,
+        );
+      } else {
+        exportAsJSON(
+          {
+            daily: buildDailyRows(dailyEntries as any),
+            breakdown: buildDimensionRows(
+              dimensionVisitorTotals,
+              dimensionRevenueTotals,
+            ),
+          },
+          `${exportFilename}-export`,
+        );
+      }
+    },
+    [dailyEntries, dimensionVisitorTotals, dimensionRevenueTotals, exportFilename],
+  );
   // ── channel tab state ──
   const [channelTab, setChannelTab] = useState<"channel" | "referrer">(
     "channel",
@@ -592,6 +631,7 @@ export function DashboardOverviewView({
         chartGranularity={chartGranularity}
         onGranularityChange={onChartGranularityChange}
         isRefreshing={isRefreshing}
+        onExport={handleExport}
       />
       <StatsRow
         dashboardData={statsData as any}

@@ -75,7 +75,7 @@ export default function Home() {
             </Link>
           ) : ossOnly ? (
             <a
-              href="https://github.com/ralph/ezlytics"
+              href="https://github.com/mzafarr/ezlytics"
               target="_blank"
               rel="noopener noreferrer"
               className="px-6 py-2 flex items-center justify-center font-bold text-lg uppercase bg-white border-4 border-black shadow-[4px_4px_0px_0px_black] hover:translate-x-[4px] hover:translate-y-[4px] hover:shadow-none transition-all duration-200"
@@ -131,7 +131,7 @@ export default function Home() {
             </Link>
           ) : ossOnly ? (
             <a
-              href="https://github.com/ralph/ezlytics"
+              href="https://github.com/mzafarr/ezlytics"
               target="_blank"
               rel="noopener noreferrer"
               className="w-full flex justify-center py-3 mt-4 bg-[#ffde59] border-4 border-black shadow-[4px_4px_0px_0px_black]"
@@ -184,7 +184,7 @@ export default function Home() {
               </Link>
             ) : null}
             <a
-              href="https://github.com/ralph/ezlytics"
+              href="https://github.com/mzafarr/ezlytics"
               target="_blank"
               rel="noopener noreferrer"
               className="px-8 py-4 flex justify-center text-xl font-black uppercase bg-white border-4 border-black shadow-[8px_8px_0px_0px_black] hover:translate-x-[8px] hover:translate-y-[8px] hover:shadow-none transition-all duration-200"
@@ -226,7 +226,7 @@ export default function Home() {
           {/* Stat badges row */}
           <div className="flex flex-wrap gap-3">
             <div className="flex items-center gap-2 bg-[#00bf63] border-4 border-black px-4 py-2 shadow-[4px_4px_0px_0px_black] font-black uppercase text-sm">
-              <Check className="w-4 h-4" strokeWidth={3} /> 4kb script
+              <Check className="w-4 h-4" strokeWidth={3} /> ~6kb script
             </div>
             <div className="flex items-center gap-2 bg-[#ffde59] border-4 border-black px-4 py-2 shadow-[4px_4px_0px_0px_black] font-black uppercase text-sm">
               <Check className="w-4 h-4" strokeWidth={3} /> MIT License
@@ -301,7 +301,7 @@ export default function Home() {
                 Paste 1 line of JS
               </h3>
               <p className="font-bold text-lg text-gray-800">
-                Drop our 4kb open-source script before your closing{" "}
+                Drop our ~6kb open-source script before your closing{" "}
                 <code className="bg-gray-100 px-1 border-2 border-black text-sm">&lt;/body&gt;</code>{" "}
                 tag and you&apos;re collecting data instantly.
               </p>
@@ -363,13 +363,13 @@ export default function Home() {
             <FeatureCard
               icon={<Database className="w-12 h-12" strokeWidth={2.5} />}
               title="1-Click Export"
-              desc="Take your data anywhere. Export to CSV, JSON, or pipe it directly to your warehouse."
+              desc="Download your data instantly. Export daily stats or full breakdowns as CSV or JSON directly from your dashboard."
               color="bg-[#00bf63]"
             />
             <FeatureCard
               icon={<Activity className="w-12 h-12" strokeWidth={2.5} />}
               title="Super Fast Script"
-              desc="Only 4kb. Won't slow down your site and respects your users' bandwidth."
+              desc="Only ~6kb gzipped. Won't slow down your site and respects your users' bandwidth."
               color="bg-[#38b6ff]"
             />
             <FeatureCard
@@ -406,7 +406,7 @@ export default function Home() {
           {/* Stats row */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
             {[
-              { stat: "4kb", label: "Script Size" },
+              { stat: "~6kb", label: "Script Size" },
               { stat: "<1min", label: "Time to data" },
               { stat: "MIT", label: "License" },
               { stat: "100%", label: "Your data" },
@@ -459,7 +459,7 @@ export default function Home() {
                 Self-host with Docker. Own your data forever.
               </p>
               <a
-                href="https://github.com/ralph/ezlytics"
+                href="https://github.com/mzafarr/ezlytics"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-2xl md:text-4xl px-12 py-6 font-black uppercase bg-[#00bf63] border-4 border-black shadow-[12px_12px_0px_0px_black] hover:translate-x-[12px] hover:translate-y-[12px] hover:shadow-none transition-all duration-200"
