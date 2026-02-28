@@ -62,25 +62,98 @@ export function DashboardSettingsView({ site }: { site: SiteSummary }) {
   );
 
   // ── Revenue provider ──
-  const [provider, setProvider] = useState<"none" | "stripe" | "lemonsqueezy">(
-    (site.revenueProvider as any) ?? "none",
-  );
-  const [webhookSecret, setWebhookSecret] = useState("");
+  const [providerForConnect, setProviderForConnect] = useState<
+    "stripe" | "lemonsqueezy"
+  >("stripe");
+  const [providerApiKey, setProviderApiKey] = useState("");
+  const [isReconnecting, setIsReconnecting] = useState(false);
 
   useEffect(() => {
-    setProvider((site.revenueProvider as any) ?? "none");
-  }, [site.revenueProvider]);
+    setIsReconnecting(false);
+    setProviderApiKey("");
+    setSyncApiKey("");
+    setSyncFromDate("");
+    setSyncResult(null);
+  }, [site.id]);
+
+  // ── Historical sync ──
+  const [syncApiKey, setSyncApiKey] = useState("");
+  const [syncFromDate, setSyncFromDate] = useState("");
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ synced: number } | null>(null);
+
+  const handleHistoricalSync = async () => {
+    const key = syncApiKey.trim();
+    if (!key) {
+      toast.error("Enter your API key to sync");
+      return;
+    }
+    setIsSyncing(true);
+    setSyncResult(null);
+    try {
+      const res = await fetch("/api/revenue/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          siteId: site.id,
+          provider: site.revenueProvider,
+          apiKey: key,
+          fromDate: syncFromDate || undefined,
+        }),
+      });
+      const data = (await res.json()) as Record<string, unknown>;
+      if (!res.ok) {
+        toast.error(
+          typeof data.error === "string" ? data.error : "Sync failed",
+        );
+      } else {
+        const count = typeof data.synced === "number" ? data.synced : 0;
+        setSyncResult({ synced: count });
+        setSyncApiKey("");
+        toast.success(
+          `Synced ${count} historical order${count !== 1 ? "s" : ""}`,
+        );
+      }
+    } catch {
+      toast.error("Sync failed — check your connection");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const createRevenueWebhook = useMutation(
+    trpc.sites.createRevenueWebhook.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: sitesQueryOptions.queryKey });
+        setProviderApiKey("");
+        setIsReconnecting(false);
+        toast.success("Revenue provider connected!");
+      },
+      onError: (error) => toast.error(error.message),
+    }),
+  );
 
   const updateRevenueProvider = useMutation(
     trpc.sites.updateRevenueProvider.mutationOptions({
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: sitesQueryOptions.queryKey });
-        setWebhookSecret("");
         toast.success("Revenue settings saved");
       },
       onError: (error) => toast.error(error.message),
     }),
   );
+
+  const isConnected =
+    !!site.revenueProvider &&
+    site.revenueProvider !== "none" &&
+    !!site.revenueProviderKeyUpdatedAt;
+
+  const connectedProviderLabel =
+    site.revenueProvider === "stripe"
+      ? "Stripe"
+      : site.revenueProvider === "lemonsqueezy"
+        ? "LemonSqueezy"
+        : "";
 
   const revenueLastUpdatedLabel = useMemo(() => {
     if (!site.revenueProviderKeyUpdatedAt) return "Not connected";
@@ -88,8 +161,6 @@ export function DashboardSettingsView({ site }: { site: SiteSummary }) {
     if (Number.isNaN(date.getTime())) return "Connected";
     return `Connected ${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
   }, [site.revenueProviderKeyUpdatedAt]);
-
-  const canSaveRevenue = provider === "none" || webhookSecret.trim().length > 0;
 
   return (
     <div className="space-y-6">
@@ -157,50 +228,290 @@ export function DashboardSettingsView({ site }: { site: SiteSummary }) {
         <CardHeader>
           <CardTitle>Revenue Integration</CardTitle>
           <CardDescription>
-            Connect a payment provider to track revenue.
+            Paste your API key — we&apos;ll register the webhook automatically
+            and discard the key.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label>Provider</Label>
-            <select
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-              value={provider}
-              onChange={(e) => setProvider(e.target.value as any)}
-            >
-              <option value="none">None</option>
-              <option value="stripe">Stripe</option>
-              <option value="lemonsqueezy">LemonSqueezy</option>
-            </select>
-          </div>
+        <CardContent className="space-y-5">
+          {/* Connected state */}
+          {isConnected && !isReconnecting && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 rounded-md border border-emerald-200 bg-emerald-50 p-4">
+                <div className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
+                <div>
+                  <p className="text-sm font-semibold">
+                    Connected via {connectedProviderLabel}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {revenueLastUpdatedLabel}
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsReconnecting(true)}
+                >
+                  Reconnect
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() =>
+                    updateRevenueProvider.mutate({
+                      siteId: site.id,
+                      provider: "none",
+                      webhookSecret: "",
+                    })
+                  }
+                  disabled={updateRevenueProvider.isPending}
+                >
+                  Disconnect
+                </Button>
+              </div>
 
-          {provider !== "none" && (
-            <div className="space-y-2">
-              <Label>Webhook Secret</Label>
-              <Input
-                type="password"
-                placeholder="Enter webhook secret…"
-                value={webhookSecret}
-                onChange={(e) => setWebhookSecret(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">
-                {revenueLastUpdatedLabel}
-              </p>
+              {/* ── Historical sync ── */}
+              <div className="rounded-md border bg-muted/50 p-4 space-y-3">
+                <div>
+                  <p className="text-sm font-semibold">
+                    Sync historical orders
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Import past {connectedProviderLabel} orders into your
+                    revenue dashboard. Your API key is used once and never
+                    stored.
+                  </p>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <div className="space-y-1">
+                    <Label htmlFor="sync-from-date" className="text-xs">
+                      From date (optional)
+                    </Label>
+                    <Input
+                      id="sync-from-date"
+                      type="date"
+                      value={syncFromDate}
+                      onChange={(e) => setSyncFromDate(e.target.value)}
+                      className="text-sm"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="sync-api-key" className="text-xs">
+                      {site.revenueProvider === "stripe"
+                        ? "Stripe Secret Key"
+                        : "LemonSqueezy API Key"}
+                    </Label>
+                    <Input
+                      id="sync-api-key"
+                      type="password"
+                      placeholder={
+                        site.revenueProvider === "stripe"
+                          ? "sk_live_..."
+                          : "eyJ0..."
+                      }
+                      value={syncApiKey}
+                      onChange={(e) => setSyncApiKey(e.target.value)}
+                      autoComplete="off"
+                      className="text-sm"
+                    />
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleHistoricalSync}
+                    disabled={isSyncing || !syncApiKey.trim()}
+                  >
+                    {isSyncing ? "Syncing…" : "Sync orders"}
+                  </Button>
+                  {syncResult !== null && (
+                    <span className="text-xs text-muted-foreground">
+                      ✓ {syncResult.synced} order
+                      {syncResult.synced !== 1 ? "s" : ""} imported
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
           )}
 
-          <Button
-            onClick={() =>
-              updateRevenueProvider.mutate({
-                siteId: site.id,
-                provider,
-                webhookSecret,
-              })
-            }
-            disabled={updateRevenueProvider.isPending || !canSaveRevenue}
-          >
-            {updateRevenueProvider.isPending ? "Saving…" : "Save"}
-          </Button>
+          {/* Setup form */}
+          {(!isConnected || isReconnecting) && (
+            <div className="space-y-5">
+              {/* Provider toggle */}
+              <div className="space-y-2">
+                <Label>Provider</Label>
+                <div className="flex gap-2">
+                  {(["stripe", "lemonsqueezy"] as const).map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      className={`px-4 py-1.5 text-sm font-semibold border-2 border-foreground transition-colors ${
+                        providerForConnect === p
+                          ? "bg-foreground text-background shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                          : "bg-transparent hover:bg-muted"
+                      }`}
+                      onClick={() => {
+                        setProviderForConnect(p);
+                        setProviderApiKey("");
+                      }}
+                    >
+                      {p === "stripe" ? "Stripe" : "LemonSqueezy"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Stripe instructions */}
+              {providerForConnect === "stripe" && (
+                <div className="rounded-md border bg-muted p-4 space-y-3">
+                  <p className="text-xs font-bold uppercase tracking-wider">
+                    How to get your Stripe secret key
+                  </p>
+                  <ol className="space-y-2 text-sm">
+                    <li className="flex gap-2">
+                      <span className="flex-none font-black text-xs bg-foreground text-background w-5 h-5 flex items-center justify-center rounded-sm">
+                        1
+                      </span>
+                      <span>
+                        Go to{" "}
+                        <a
+                          href="https://dashboard.stripe.com/apikeys"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="underline font-semibold"
+                        >
+                          dashboard.stripe.com → Developers → API keys
+                        </a>
+                      </span>
+                    </li>
+                    <li className="flex gap-2">
+                      <span className="flex-none font-black text-xs bg-foreground text-background w-5 h-5 flex items-center justify-center rounded-sm">
+                        2
+                      </span>
+                      <span>
+                        Copy your <strong>Secret key</strong> — starts with{" "}
+                        <code className="bg-background px-1 text-xs">
+                          sk_live_…
+                        </code>{" "}
+                        or{" "}
+                        <code className="bg-background px-1 text-xs">
+                          sk_test_…
+                        </code>
+                      </span>
+                    </li>
+                    <li className="flex gap-2">
+                      <span className="flex-none font-black text-xs bg-foreground text-background w-5 h-5 flex items-center justify-center rounded-sm">
+                        3
+                      </span>
+                      <span>
+                        Paste it below. We&apos;ll create the webhook in your
+                        Stripe account and store only the signing secret.
+                      </span>
+                    </li>
+                  </ol>
+                </div>
+              )}
+
+              {/* LemonSqueezy instructions */}
+              {providerForConnect === "lemonsqueezy" && (
+                <div className="rounded-md border bg-muted p-4 space-y-3">
+                  <p className="text-xs font-bold uppercase tracking-wider">
+                    How to get your LemonSqueezy API key
+                  </p>
+                  <ol className="space-y-2 text-sm">
+                    <li className="flex gap-2">
+                      <span className="flex-none font-black text-xs bg-foreground text-background w-5 h-5 flex items-center justify-center rounded-sm">
+                        1
+                      </span>
+                      <span>
+                        Go to{" "}
+                        <a
+                          href="https://app.lemonsqueezy.com/settings/api"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="underline font-semibold"
+                        >
+                          app.lemonsqueezy.com → Settings → API
+                        </a>
+                      </span>
+                    </li>
+                    <li className="flex gap-2">
+                      <span className="flex-none font-black text-xs bg-foreground text-background w-5 h-5 flex items-center justify-center rounded-sm">
+                        2
+                      </span>
+                      <span>
+                        Click <strong>+ New API key</strong>, give it a name,
+                        and copy the key
+                      </span>
+                    </li>
+                    <li className="flex gap-2">
+                      <span className="flex-none font-black text-xs bg-foreground text-background w-5 h-5 flex items-center justify-center rounded-sm">
+                        3
+                      </span>
+                      <span>
+                        Paste it below. We&apos;ll create the webhook and
+                        generate a signing secret automatically.
+                      </span>
+                    </li>
+                  </ol>
+                </div>
+              )}
+
+              {/* API key input */}
+              <div className="space-y-2">
+                <Label htmlFor="site-provider-api-key">
+                  {providerForConnect === "stripe"
+                    ? "Stripe Secret Key"
+                    : "LemonSqueezy API Key"}
+                </Label>
+                <Input
+                  id="site-provider-api-key"
+                  type="password"
+                  placeholder={
+                    providerForConnect === "stripe" ? "sk_live_..." : "eyJ0..."
+                  }
+                  value={providerApiKey}
+                  onChange={(e) => setProviderApiKey(e.target.value)}
+                  autoComplete="off"
+                />
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex items-center gap-3">
+                <Button
+                  type="button"
+                  onClick={() =>
+                    createRevenueWebhook.mutate({
+                      siteId: site.id,
+                      provider: providerForConnect,
+                      apiKey: providerApiKey.trim(),
+                    })
+                  }
+                  disabled={
+                    createRevenueWebhook.isPending || !providerApiKey.trim()
+                  }
+                >
+                  {createRevenueWebhook.isPending
+                    ? "Connecting..."
+                    : `Connect ${providerForConnect === "stripe" ? "Stripe" : "LemonSqueezy"}`}
+                </Button>
+                {isReconnecting && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setIsReconnecting(false);
+                      setProviderApiKey("");
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

@@ -6,33 +6,74 @@ import { type Route } from "next";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-import { revenueProviderSchema } from "@/components/dashboard/schema";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { queryClient, trpc } from "@/utils/trpc";
 
-const providerOptions = ["stripe", "lemonsqueezy"] as const;
-type ProviderOption = (typeof providerOptions)[number];
+const PROVIDERS = [
+  { value: "stripe", label: "Stripe" },
+  { value: "lemonsqueezy", label: "LemonSqueezy" },
+] as const;
+
+type ProviderValue = (typeof PROVIDERS)[number]["value"];
+
+const INSTRUCTIONS: Record<
+  ProviderValue,
+  { title: string; steps: string[]; placeholder: string; inputLabel: string }
+> = {
+  stripe: {
+    title: "How to get your Stripe secret key",
+    steps: [
+      "Go to dashboard.stripe.com → Developers → API keys",
+      "Copy your Secret key — starts with sk_live_… or sk_test_…",
+      "Paste it below. We'll register the webhook endpoint in Stripe and store only the signing secret.",
+    ],
+    inputLabel: "Stripe Secret Key",
+    placeholder: "sk_live_...",
+  },
+  lemonsqueezy: {
+    title: "How to get your LemonSqueezy API key",
+    steps: [
+      "Go to app.lemonsqueezy.com → Settings → API",
+      "Click + New API key, give it a name, and copy the key",
+      "Paste it below. We'll create the webhook and generate a signing secret automatically.",
+    ],
+    inputLabel: "LemonSqueezy API Key",
+    placeholder: "eyJ0...",
+  },
+};
 
 export default function RevenueAttributionStep() {
   const router = useRouter();
   const sitesQueryOptions = trpc.sites.list.queryOptions();
   const sitesQuery = useQuery(sitesQueryOptions);
-  const updateRevenueProvider = useMutation(
-    trpc.sites.updateRevenueProvider.mutationOptions({
+
+  const [provider, setProvider] = useState<ProviderValue>("stripe");
+  const [apiKey, setApiKey] = useState("");
+
+  const createRevenueWebhook = useMutation(
+    trpc.sites.createRevenueWebhook.mutationOptions({
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: sitesQueryOptions.queryKey });
+        toast.success("Revenue provider connected!");
+        router.push("/dashboard" as Route);
+      },
+      onError: (error) => {
+        toast.error(error.message);
       },
     }),
   );
-  const [provider, setProvider] = useState<ProviderOption>(providerOptions[0]);
-  const [apiKey, setApiKey] = useState("");
 
-  const connectDisabled = apiKey.trim().length === 0 || updateRevenueProvider.isPending;
-
-  const handleConnect = async () => {
+  const handleConnect = () => {
     const trimmedKey = apiKey.trim();
     if (!trimmedKey) {
       toast.error("API key is required");
@@ -43,69 +84,78 @@ export default function RevenueAttributionStep() {
       toast.error("Create a site before connecting revenue");
       return;
     }
-    const parsed = revenueProviderSchema.safeParse({
+    createRevenueWebhook.mutate({
+      siteId: targetSite.id,
       provider,
-      webhookSecret: trimmedKey,
+      apiKey: trimmedKey,
     });
-    if (!parsed.success) {
-      toast.error("Invalid revenue settings");
-      return;
-    }
-    try {
-      await updateRevenueProvider.mutateAsync({
-        siteId: targetSite.id,
-        provider: parsed.data.provider,
-        webhookSecret: parsed.data.webhookSecret,
-      });
-      toast.success("Revenue provider connected");
-      router.push("/dashboard" as Route);
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to save revenue settings",
-      );
-    }
   };
+
+  const instructions = INSTRUCTIONS[provider];
 
   return (
     <div className="mx-auto w-full max-w-2xl px-6 py-10">
       <Card>
         <CardHeader>
           <CardTitle>Connect revenue attribution</CardTitle>
-          <CardDescription>Step 3 of 3 · Connect Stripe or LemonSqueezy to track revenue.</CardDescription>
+          <CardDescription>
+            Step 3 of 3 · Paste your API key and we&apos;ll register the webhook
+            automatically — no manual setup needed.
+          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
+          {/* Provider toggle */}
           <div className="space-y-2">
-            <Label htmlFor="revenue-provider">Provider</Label>
-            <select
-              id="revenue-provider"
-              value={provider}
-              onChange={(event) => {
-                const nextProvider = providerOptions.find(
-                  (option) => option === event.target.value,
-                );
-                if (nextProvider) {
-                  setProvider(nextProvider);
-                }
-              }}
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
-            >
-              <option value="stripe">Stripe</option>
-              <option value="lemonsqueezy">LemonSqueezy</option>
-            </select>
+            <Label>Provider</Label>
+            <div className="flex gap-2">
+              {PROVIDERS.map(({ value, label }) => (
+                <button
+                  key={value}
+                  type="button"
+                  className={`px-4 py-1.5 text-sm font-semibold border-2 border-input transition-colors rounded-md ${
+                    provider === value
+                      ? "bg-foreground text-background"
+                      : "bg-transparent hover:bg-muted"
+                  }`}
+                  onClick={() => {
+                    setProvider(value);
+                    setApiKey("");
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
           </div>
+
+          {/* Instructions */}
+          <div className="rounded-md border bg-muted p-4 space-y-3">
+            <p className="text-xs font-bold uppercase tracking-wider">
+              {instructions.title}
+            </p>
+            <ol className="space-y-2 text-sm">
+              {instructions.steps.map((step, i) => (
+                <li key={i} className="flex gap-2">
+                  <span className="flex-none font-black text-xs bg-foreground text-background w-5 h-5 flex items-center justify-center rounded-sm">
+                    {i + 1}
+                  </span>
+                  <span>{step}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+
+          {/* API key input */}
           <div className="space-y-2">
-            <Label htmlFor="revenue-api-key">API Key</Label>
+            <Label htmlFor="revenue-api-key">{instructions.inputLabel}</Label>
             <Input
               id="revenue-api-key"
               type="password"
-              placeholder="sk_live_..."
+              placeholder={instructions.placeholder}
               value={apiKey}
-              onChange={(event) => setApiKey(event.target.value)}
+              onChange={(e) => setApiKey(e.target.value)}
               autoComplete="off"
             />
-            <p className="text-xs text-muted-foreground">
-              Paste your provider secret key to connect revenue attribution.
-            </p>
           </div>
         </CardContent>
         <CardFooter className="flex flex-wrap items-center justify-between gap-3">
@@ -116,8 +166,14 @@ export default function RevenueAttributionStep() {
           >
             Skip for now
           </Button>
-          <Button type="button" onClick={handleConnect} disabled={connectDisabled}>
-            Connect
+          <Button
+            type="button"
+            onClick={handleConnect}
+            disabled={createRevenueWebhook.isPending || !apiKey.trim()}
+          >
+            {createRevenueWebhook.isPending
+              ? "Connecting..."
+              : `Connect ${provider === "stripe" ? "Stripe" : "LemonSqueezy"}`}
           </Button>
         </CardFooter>
       </Card>

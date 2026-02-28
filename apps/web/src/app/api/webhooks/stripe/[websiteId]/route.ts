@@ -3,7 +3,7 @@ import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 
 import { and, db, eq, payment, rawEvent } from "@my-better-t-app/db";
-import { env } from "@my-better-t-app/env/server";
+import { decryptRevenueKey } from "@my-better-t-app/api/revenue-keys";
 import { sanitizeMetadataRecord } from "@/lib/metadata-sanitize";
 import { extractDimensionRollups, metricsForEvent, upsertDimensionRollups, upsertRollups } from "@/lib/rollups";
 
@@ -102,17 +102,39 @@ export const POST = async (
     return NextResponse.json({ error: "Website id is required" }, { status: 400 });
   }
 
-  const webhookSecret = env.STRIPE_WEBHOOK_SECRET;
-  if (!webhookSecret) {
-    return NextResponse.json({ error: "Stripe webhook secret not configured" }, { status: 500 });
-  }
+  // Read the raw body first (must happen before any parsing)
+  const body = await request.text();
 
   const signatureHeader = request.headers.get("stripe-signature");
   if (!signatureHeader) {
     return NextResponse.json({ error: "Stripe signature header missing" }, { status: 400 });
   }
 
-  const body = await request.text();
+  // Look up site to get the per-site webhook secret
+  const siteRecord = await db.query.site.findFirst({
+    columns: { id: true, revenueProvider: true, revenueProviderKeyEncrypted: true },
+    where: (sites, { eq }) => eq(sites.websiteId, websiteId),
+  });
+
+  if (!siteRecord) {
+    return NextResponse.json({ error: "Site not found" }, { status: 404 });
+  }
+
+  if (!siteRecord.revenueProviderKeyEncrypted) {
+    return NextResponse.json({ error: "Stripe revenue provider not configured for this site" }, { status: 400 });
+  }
+
+  if (siteRecord.revenueProvider !== "stripe") {
+    return NextResponse.json({ error: "This site is not configured for Stripe" }, { status: 400 });
+  }
+
+  let webhookSecret: string;
+  try {
+    webhookSecret = decryptRevenueKey(siteRecord.revenueProviderKeyEncrypted);
+  } catch {
+    return NextResponse.json({ error: "Failed to read webhook secret" }, { status: 500 });
+  }
+
   if (!verifyStripeSignature(body, signatureHeader, webhookSecret)) {
     return NextResponse.json({ error: "Invalid Stripe signature" }, { status: 400 });
   }
@@ -144,19 +166,9 @@ export const POST = async (
   const goalEventId = `${eventId}:goal`;
 
   const metadata = isRecord(eventObject.metadata) ? eventObject.metadata : {};
+  // visitor ID is optional — revenue is always recorded, attribution only when present
   const visitorId = getString(metadata.ezlytics_visitor_id);
-  if (!visitorId) {
-    return NextResponse.json({ error: "ezlytics_visitor_id is required in metadata" }, { status: 400 });
-  }
-
-  const siteRecord = await db.query.site.findFirst({
-    columns: { id: true },
-    where: (sites, { eq }) => eq(sites.websiteId, websiteId),
-  });
-
-  if (!siteRecord) {
-    return NextResponse.json({ error: "Site not found" }, { status: 404 });
-  }
+  const hasVisitor = Boolean(visitorId);
 
 
   const sessionId = getString(metadata.ezlytics_session_id);
@@ -179,7 +191,10 @@ export const POST = async (
         })
       : null;
   const paymentEventType = isRefunded ? "refund" : existingPayment ? "renewal" : "new";
-  const attribution = await getAttributionSnapshot(siteRecord.id, visitorId);
+  // Attribution snapshot only when we have a real visitor
+  const attribution = hasVisitor ? await getAttributionSnapshot(siteRecord.id, visitorId) : null;
+  // Synthetic visitor ID for the raw event row (must be non-empty)
+  const rawEventVisitorId = visitorId || `txn_${transactionId || eventId}`;
   const paymentMetadata: Record<string, unknown> = {
     provider: "stripe",
     event_type: paymentEventType,
@@ -227,7 +242,7 @@ export const POST = async (
       .values({
         id: randomUUID(),
         siteId: siteRecord.id,
-        visitorId,
+        visitorId: visitorId || null,
         eventId: paymentEventId,
         amount: amount ?? 0,
         currency: currency || "usd",
@@ -255,23 +270,26 @@ export const POST = async (
       eventId: paymentEventId,
       type: "payment",
       name: "stripe_checkout",
-      visitorId,
+      visitorId: rawEventVisitorId,
       sessionId: sessionId || null,
       timestamp: eventTimestamp,
       metadata: sanitizedPaymentMetadata,
     });
 
-    await tx.insert(rawEvent).values({
-      id: randomUUID(),
-      siteId: siteRecord.id,
-      eventId: goalEventId,
-      type: "goal",
-      name: getGoalName(amount),
-      visitorId,
-      sessionId: sessionId || null,
-      timestamp: eventTimestamp,
-      metadata: sanitizedGoalMetadata,
-    });
+    // Goal event + rollups only when we can attribute to a visitor
+    if (hasVisitor) {
+      await tx.insert(rawEvent).values({
+        id: randomUUID(),
+        siteId: siteRecord.id,
+        eventId: goalEventId,
+        type: "goal",
+        name: getGoalName(amount),
+        visitorId,
+        sessionId: sessionId || null,
+        timestamp: eventTimestamp,
+        metadata: sanitizedGoalMetadata,
+      });
+    }
 
     await upsertRollups({
       db: tx,
@@ -280,23 +298,25 @@ export const POST = async (
       metrics: paymentMetrics,
     });
 
-    await upsertRollups({
-      db: tx,
-      siteId: siteRecord.id,
-      timestamp,
-      metrics: goalMetrics,
-    });
+    if (hasVisitor) {
+      await upsertRollups({
+        db: tx,
+        siteId: siteRecord.id,
+        timestamp,
+        metrics: goalMetrics,
+      });
 
-    await upsertDimensionRollups({
-      db: tx,
-      siteId: siteRecord.id,
-      timestamp,
-      metrics: goalMetrics,
-      dimensions: extractDimensionRollups({
-        type: "goal",
-        name: getGoalName(amount),
-      }),
-    });
+      await upsertDimensionRollups({
+        db: tx,
+        siteId: siteRecord.id,
+        timestamp,
+        metrics: goalMetrics,
+        dimensions: extractDimensionRollups({
+          type: "goal",
+          name: getGoalName(amount),
+        }),
+      });
+    }
 
     return false;
   });

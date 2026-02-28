@@ -271,10 +271,13 @@ export const upsertRollups = async ({
         revenue: sql`${rollupHourly.revenue} + ${normalized.revenue}`,
         revenueByType: sql`jsonb_set(
           jsonb_set(
-            jsonb_set(${rollupHourly.revenueByType}, '{new}', to_jsonb((${rollupHourly.revenueByType}->>'new')::int + ${normalized.revenueByType.new}), true),
-            '{renewal}', to_jsonb((${rollupHourly.revenueByType}->>'renewal')::int + ${normalized.revenueByType.renewal}), true
+            jsonb_set(
+              COALESCE(${rollupHourly.revenueByType}, '{"new":0,"renewal":0,"refund":0}'::jsonb),
+              '{new}', to_jsonb(COALESCE((${rollupHourly.revenueByType}->>'new')::int, 0) + ${normalized.revenueByType.new}), true
+            ),
+            '{renewal}', to_jsonb(COALESCE((${rollupHourly.revenueByType}->>'renewal')::int, 0) + ${normalized.revenueByType.renewal}), true
           ),
-          '{refund}', to_jsonb((${rollupHourly.revenueByType}->>'refund')::int + ${normalized.revenueByType.refund}), true
+          '{refund}', to_jsonb(COALESCE((${rollupHourly.revenueByType}->>'refund')::int, 0) + ${normalized.revenueByType.refund}), true
         )`,
       },
     });
@@ -306,10 +309,13 @@ export const upsertRollups = async ({
         revenue: sql`${rollupDaily.revenue} + ${normalized.revenue}`,
         revenueByType: sql`jsonb_set(
           jsonb_set(
-            jsonb_set(${rollupDaily.revenueByType}, '{new}', to_jsonb((${rollupDaily.revenueByType}->>'new')::int + ${normalized.revenueByType.new}), true),
-            '{renewal}', to_jsonb((${rollupDaily.revenueByType}->>'renewal')::int + ${normalized.revenueByType.renewal}), true
+            jsonb_set(
+              COALESCE(${rollupDaily.revenueByType}, '{"new":0,"renewal":0,"refund":0}'::jsonb),
+              '{new}', to_jsonb(COALESCE((${rollupDaily.revenueByType}->>'new')::int, 0) + ${normalized.revenueByType.new}), true
+            ),
+            '{renewal}', to_jsonb(COALESCE((${rollupDaily.revenueByType}->>'renewal')::int, 0) + ${normalized.revenueByType.renewal}), true
           ),
-          '{refund}', to_jsonb((${rollupDaily.revenueByType}->>'refund')::int + ${normalized.revenueByType.refund}), true
+          '{refund}', to_jsonb(COALESCE((${rollupDaily.revenueByType}->>'refund')::int, 0) + ${normalized.revenueByType.refund}), true
         )`,
       },
     });

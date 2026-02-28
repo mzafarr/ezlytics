@@ -18,11 +18,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { queryClient, trpc } from "@/utils/trpc";
-import {
-  revenueProviderSchema,
-  defaultRevenueProvider,
-  type Exclusions,
-} from "../schema";
+import { type Exclusions } from "../schema";
 
 import { useEffect, useMemo, useState } from "react";
 
@@ -37,9 +33,11 @@ export function SettingsView({
     next: Exclusions | ((current: Exclusions) => Exclusions),
   ) => void;
 }) {
-  const [revenueProviderSettings, setRevenueProviderSettings] = useState<
-    z.infer<typeof revenueProviderSchema>
-  >(defaultRevenueProvider);
+  const [providerForConnect, setProviderForConnect] = useState<
+    "stripe" | "lemonsqueezy"
+  >("stripe");
+  const [providerApiKey, setProviderApiKey] = useState("");
+  const [isReconnecting, setIsReconnecting] = useState(false);
 
   const sitesQueryOptions = trpc.sites.list.queryOptions();
 
@@ -67,17 +65,24 @@ export function SettingsView({
     }),
   );
 
+  const createRevenueWebhook = useMutation(
+    trpc.sites.createRevenueWebhook.mutationOptions({
+      onSuccess: () => {
+        queryClient.invalidateQueries({ queryKey: sitesQueryOptions.queryKey });
+        setProviderApiKey("");
+        setIsReconnecting(false);
+        toast.success("Revenue provider connected!");
+      },
+      onError: (error) => {
+        toast.error(error.message);
+      },
+    }),
+  );
+
   const updateRevenueProvider = useMutation(
     trpc.sites.updateRevenueProvider.mutationOptions({
-      onSuccess: (data) => {
+      onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: sitesQueryOptions.queryKey });
-        setRevenueProviderSettings((prev) => ({
-          ...prev,
-          provider: data.revenueProvider as z.infer<
-            typeof revenueProviderSchema
-          >["provider"],
-          webhookSecret: "",
-        }));
         toast.success("Revenue settings updated");
       },
       onError: (error) => {
@@ -87,19 +92,10 @@ export function SettingsView({
   );
 
   useEffect(() => {
-    if (!latestSite) {
-      setRevenueProviderSettings(defaultRevenueProvider);
-      return;
-    }
-    setRevenueProviderSettings((prev) => ({
-      ...prev,
-      provider: (latestSite.revenueProvider ??
-        defaultRevenueProvider.provider) as z.infer<
-        typeof revenueProviderSchema
-      >["provider"],
-      webhookSecret: "",
-    }));
-  }, [latestSite]);
+    if (!latestSite) return;
+    setIsReconnecting(false);
+    setProviderApiKey("");
+  }, [latestSite?.id]);
 
   const siteForm = useForm({
     defaultValues: {
@@ -141,31 +137,23 @@ export function SettingsView({
     : "";
   const apiKey = latestSite?.apiKey ?? "";
 
-  const revenueProviderLabel =
-    revenueProviderSettings.provider === "stripe"
+  const connectedProvider = latestSite?.revenueProvider;
+  const isConnected =
+    !!connectedProvider &&
+    connectedProvider !== "none" &&
+    !!latestSite?.revenueProviderKeyUpdatedAt;
+  const connectedProviderLabel =
+    connectedProvider === "stripe"
       ? "Stripe"
-      : revenueProviderSettings.provider === "lemonsqueezy"
+      : connectedProvider === "lemonsqueezy"
         ? "LemonSqueezy"
-        : "No provider";
-  const revenueConnectionReady =
-    revenueProviderSettings.provider !== "none" &&
-    revenueProviderSettings.webhookSecret.trim().length > 0;
+        : "";
   const revenueLastUpdatedLabel = useMemo(() => {
-    if (!latestSite?.revenueProviderKeyUpdatedAt) {
-      return "Not connected";
-    }
+    if (!latestSite?.revenueProviderKeyUpdatedAt) return "Not connected";
     const date = new Date(latestSite.revenueProviderKeyUpdatedAt);
-    if (Number.isNaN(date.getTime())) {
-      return "Connected";
-    }
+    if (Number.isNaN(date.getTime())) return "Connected";
     return `Connected ${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
   }, [latestSite?.revenueProviderKeyUpdatedAt]);
-  const revenueStatusLabel =
-    revenueProviderSettings.provider === "none"
-      ? "Not connected"
-      : revenueConnectionReady
-        ? `${revenueProviderLabel} ready to connect`
-        : `${revenueProviderLabel} ${revenueLastUpdatedLabel.toLowerCase()}`;
 
   return (
     <div className="space-y-6">
@@ -365,78 +353,232 @@ export function SettingsView({
         <CardHeader>
           <CardTitle>Revenue integration</CardTitle>
           <CardDescription>
-            Connect a payment provider to track revenue
+            Paste your payment provider API key — we&apos;ll register the
+            webhook automatically and discard the key.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label>Provider</Label>
-            <select
-              className="flex h-9 w-full rounded-none border-2 border-foreground bg-transparent px-3 py-1 text-base shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-offset-0 focus-visible:border-primary disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
-              value={revenueProviderSettings.provider}
-              onChange={(e) =>
-                setRevenueProviderSettings((prev) => ({
-                  ...prev,
-                  provider: e.target.value as any,
-                }))
-              }
-            >
-              <option value="none">None</option>
-              <option value="stripe">Stripe</option>
-              <option value="lemonsqueezy">LemonSqueezy</option>
-            </select>
-          </div>
-          {revenueProviderSettings.provider !== "none" && (
-            <div className="space-y-2">
-              <Label>Webhook Secret</Label>
-              <Input
-                type="password"
-                value={revenueProviderSettings.webhookSecret}
-                onChange={(e) =>
-                  setRevenueProviderSettings((prev) => ({
-                    ...prev,
-                    webhookSecret: e.target.value,
-                  }))
-                }
-              />
-              <div className="flex items-center gap-2 pt-2">
-                <span
-                  className={`inline-block h-2 w-2 rounded-none border-2 border-foreground ${revenueConnectionReady ? "bg-emerald-500" : "bg-red-500"}`}
-                />
-                <span className="text-xs text-muted-foreground">
-                  {revenueStatusLabel}
-                </span>
+        <CardContent className="space-y-5">
+          {/* Connected state */}
+          {isConnected && !isReconnecting && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3 border-2 border-emerald-200 bg-emerald-50 p-4">
+                <div className="h-2.5 w-2.5 rounded-none border-2 border-foreground bg-emerald-500" />
+                <div>
+                  <p className="text-sm font-semibold">
+                    Connected via {connectedProviderLabel}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {revenueLastUpdatedLabel}
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsReconnecting(true)}
+                >
+                  Reconnect
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    if (!latestSite?.id) return;
+                    updateRevenueProvider.mutate({
+                      siteId: latestSite.id,
+                      provider: "none",
+                      webhookSecret: "",
+                    });
+                  }}
+                  disabled={updateRevenueProvider.isPending}
+                >
+                  Disconnect
+                </Button>
               </div>
             </div>
           )}
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              onClick={() => {
-                if (!latestSite?.id) {
-                  toast.error("Select a site to update revenue settings");
-                  return;
-                }
-                updateRevenueProvider.mutate({
-                  siteId: latestSite.id,
-                  provider: revenueProviderSettings.provider,
-                  webhookSecret: revenueProviderSettings.webhookSecret,
-                });
-              }}
-              disabled={
-                updateRevenueProvider.isPending ||
-                (revenueProviderSettings.provider !== "none" &&
-                  !revenueConnectionReady)
-              }
-            >
-              {updateRevenueProvider.isPending ? "Saving..." : "Save settings"}
-            </Button>
-            {latestSite?.revenueProviderKeyUpdatedAt ? (
-              <span className="text-xs text-muted-foreground">
-                {revenueLastUpdatedLabel}
-              </span>
-            ) : null}
-          </div>
+
+          {/* Setup form */}
+          {(!isConnected || isReconnecting) && (
+            <div className="space-y-5">
+              {/* Provider toggle */}
+              <div className="space-y-2">
+                <Label>Provider</Label>
+                <div className="flex gap-2">
+                  {(["stripe", "lemonsqueezy"] as const).map((p) => (
+                    <button
+                      key={p}
+                      type="button"
+                      className={`px-4 py-1.5 text-sm font-semibold border-2 border-foreground transition-colors ${
+                        providerForConnect === p
+                          ? "bg-foreground text-background shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                          : "bg-transparent hover:bg-muted"
+                      }`}
+                      onClick={() => {
+                        setProviderForConnect(p);
+                        setProviderApiKey("");
+                      }}
+                    >
+                      {p === "stripe" ? "Stripe" : "LemonSqueezy"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Stripe instructions */}
+              {providerForConnect === "stripe" && (
+                <div className="rounded-none border-2 border-foreground bg-muted p-4 space-y-3">
+                  <p className="text-xs font-bold uppercase tracking-wider">
+                    How to get your Stripe secret key
+                  </p>
+                  <ol className="space-y-2 text-sm">
+                    <li className="flex gap-2">
+                      <span className="flex-none font-black text-xs bg-foreground text-background w-5 h-5 flex items-center justify-center">
+                        1
+                      </span>
+                      <span>
+                        Go to{" "}
+                        <a
+                          href="https://dashboard.stripe.com/apikeys"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="underline font-semibold"
+                        >
+                          dashboard.stripe.com → Developers → API keys
+                        </a>
+                      </span>
+                    </li>
+                    <li className="flex gap-2">
+                      <span className="flex-none font-black text-xs bg-foreground text-background w-5 h-5 flex items-center justify-center">
+                        2
+                      </span>
+                      <span>
+                        Copy your <strong>Secret key</strong> — starts with{" "}
+                        <code className="bg-background px-1 text-xs border border-foreground/20">
+                          sk_live_…
+                        </code>{" "}
+                        or{" "}
+                        <code className="bg-background px-1 text-xs border border-foreground/20">
+                          sk_test_…
+                        </code>
+                      </span>
+                    </li>
+                    <li className="flex gap-2">
+                      <span className="flex-none font-black text-xs bg-foreground text-background w-5 h-5 flex items-center justify-center">
+                        3
+                      </span>
+                      <span>
+                        Paste it below. We&apos;ll create the webhook endpoint
+                        in your Stripe account and store only the signing
+                        secret.
+                      </span>
+                    </li>
+                  </ol>
+                </div>
+              )}
+
+              {/* LemonSqueezy instructions */}
+              {providerForConnect === "lemonsqueezy" && (
+                <div className="rounded-none border-2 border-foreground bg-muted p-4 space-y-3">
+                  <p className="text-xs font-bold uppercase tracking-wider">
+                    How to get your LemonSqueezy API key
+                  </p>
+                  <ol className="space-y-2 text-sm">
+                    <li className="flex gap-2">
+                      <span className="flex-none font-black text-xs bg-foreground text-background w-5 h-5 flex items-center justify-center">
+                        1
+                      </span>
+                      <span>
+                        Go to{" "}
+                        <a
+                          href="https://app.lemonsqueezy.com/settings/api"
+                          target="_blank"
+                          rel="noreferrer"
+                          className="underline font-semibold"
+                        >
+                          app.lemonsqueezy.com → Settings → API
+                        </a>
+                      </span>
+                    </li>
+                    <li className="flex gap-2">
+                      <span className="flex-none font-black text-xs bg-foreground text-background w-5 h-5 flex items-center justify-center">
+                        2
+                      </span>
+                      <span>
+                        Click <strong>+ New API key</strong>, give it a name,
+                        and copy the key
+                      </span>
+                    </li>
+                    <li className="flex gap-2">
+                      <span className="flex-none font-black text-xs bg-foreground text-background w-5 h-5 flex items-center justify-center">
+                        3
+                      </span>
+                      <span>
+                        Paste it below. We&apos;ll create the webhook and
+                        generate a signing secret automatically.
+                      </span>
+                    </li>
+                  </ol>
+                </div>
+              )}
+
+              {/* API key input */}
+              <div className="space-y-2">
+                <Label htmlFor="provider-api-key">
+                  {providerForConnect === "stripe"
+                    ? "Stripe Secret Key"
+                    : "LemonSqueezy API Key"}
+                </Label>
+                <Input
+                  id="provider-api-key"
+                  type="password"
+                  placeholder={
+                    providerForConnect === "stripe" ? "sk_live_..." : "eyJ0..."
+                  }
+                  value={providerApiKey}
+                  onChange={(e) => setProviderApiKey(e.target.value)}
+                  autoComplete="off"
+                />
+              </div>
+
+              {/* Action buttons */}
+              <div className="flex items-center gap-3">
+                <Button
+                  type="button"
+                  onClick={() => {
+                    if (!latestSite?.id) {
+                      toast.error("Select a site first");
+                      return;
+                    }
+                    createRevenueWebhook.mutate({
+                      siteId: latestSite.id,
+                      provider: providerForConnect,
+                      apiKey: providerApiKey.trim(),
+                    });
+                  }}
+                  disabled={
+                    createRevenueWebhook.isPending || !providerApiKey.trim()
+                  }
+                >
+                  {createRevenueWebhook.isPending
+                    ? "Connecting..."
+                    : `Connect ${providerForConnect === "stripe" ? "Stripe" : "LemonSqueezy"}`}
+                </Button>
+                {isReconnecting && (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setIsReconnecting(false);
+                      setProviderApiKey("");
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

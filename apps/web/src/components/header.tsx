@@ -19,7 +19,7 @@ export default function Header() {
   }
 
   return (
-    <nav className="sticky top-0 z-50 flex items-center justify-between p-3 md:p-4 border-b-2 border-foreground bg-background">
+    <nav className="sticky top-0 z-50 flex items-center justify-between  p-3 md:p-4 border-b-2 border-foreground bg-background">
       <div className="flex items-center gap-4">
         <Link href="/" className="flex items-center gap-3">
           <div className="p-1 md:p-1.5 bg-amber-500 border-2 border-foreground shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] transition-all">

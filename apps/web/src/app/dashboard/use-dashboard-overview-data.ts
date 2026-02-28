@@ -141,10 +141,11 @@ const normalizeRevenueByType = (
   if (!isRecord(value)) {
     return null;
   }
+  // revenueByType values are also stored in cents — convert to dollars
   return {
-    new: toNumber(value.new),
-    renewal: toNumber(value.renewal),
-    refund: toNumber(value.refund),
+    new: (toNumber(value.new) || 0) / 100,
+    renewal: (toNumber(value.renewal) || 0) / 100,
+    refund: (toNumber(value.refund) || 0) / 100,
   };
 };
 
@@ -191,7 +192,8 @@ export function useDashboardOverviewData(
         visitors: toNumber(entry.visitors),
         sessions: toNumber(entry.sessions),
         goals: toNumber(entry.goals),
-        revenue: toNumber(entry.revenue),
+        // Revenue is stored in cents — convert to dollars for all downstream usage
+        revenue: toNumber(entry.revenue) / 100,
         bounced: toNumber(entry.bouncedSessions),
         durationMs: toNumber(entry.avgSessionDurationMs),
         revenueByType: normalizeRevenueByType(entry.revenueByType),
@@ -494,7 +496,8 @@ export function useDashboardOverviewData(
     for (const entry of dimensions) {
       const dimension = entry.dimension;
       const label = entry.dimensionValue.trim() || "unknown";
-      const revenue = entry.revenue ?? 0;
+      // Revenue stored in cents — convert to dollars
+      const revenue = (entry.revenue ?? 0) / 100;
       if (!totals[dimension]) {
         totals[dimension] = {};
       }

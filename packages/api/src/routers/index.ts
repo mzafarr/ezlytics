@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 
 import { z } from "zod";
 
@@ -6,10 +6,8 @@ import {
   analyticsSession,
   and,
   db,
-  desc,
   eq,
   gte,
-  isNotNull,
   lte,
   rawEvent,
   rollupDaily,
@@ -21,6 +19,7 @@ import { TRPCError } from "@trpc/server";
 
 import { protectedProcedure, publicProcedure, router } from "../index";
 import { encryptRevenueKey } from "../revenue-keys";
+import { env } from "@my-better-t-app/env/server";
 
 const normalizeDomain = (input: string) => {
   const trimmed = input.trim().toLowerCase();
@@ -325,6 +324,133 @@ export const appRouter = router({
           });
         }
 
+        return updated[0];
+      }),
+    createRevenueWebhook: protectedProcedure
+      .input(
+        z.object({
+          siteId: z.string().min(1, "Site id is required"),
+          provider: z.enum(["stripe", "lemonsqueezy"]),
+          apiKey: z.string().trim().min(1, "API key is required"),
+        }),
+      )
+      .mutation(async ({ input, ctx }) => {
+        const siteRecord = await db.query.site.findFirst({
+          columns: { id: true, websiteId: true },
+          where: (sites) =>
+            and(eq(sites.id, input.siteId), eq(sites.userId, ctx.session.user.id)),
+        });
+        if (!siteRecord) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Site not found" });
+        }
+
+        const appUrl = env.BETTER_AUTH_URL.replace(/\/$/, "");
+        const webhookUrl = `${appUrl}/api/webhooks/${input.provider}/${siteRecord.websiteId}`;
+        let webhookSecret: string;
+
+        if (input.provider === "stripe") {
+          const formData = new URLSearchParams();
+          formData.append("url", webhookUrl);
+          formData.append("enabled_events[]", "checkout.session.completed");
+          formData.append("enabled_events[]", "checkout.session.async_payment_succeeded");
+          const res = await fetch("https://api.stripe.com/v1/webhook_endpoints", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${input.apiKey}`,
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: formData.toString(),
+          });
+          const data = (await res.json()) as Record<string, unknown>;
+          if (!res.ok) {
+            const errMsg = (data.error as Record<string, unknown> | undefined)?.message;
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: typeof errMsg === "string" ? errMsg : "Failed to create Stripe webhook. Check your secret key.",
+            });
+          }
+          if (typeof data.secret !== "string" || !data.secret) {
+            throw new TRPCError({ code: "INTERNAL_SERVER_ERROR", message: "Stripe did not return a signing secret" });
+          }
+          webhookSecret = data.secret;
+        } else {
+          // For LemonSqueezy we generate the secret ourselves
+          webhookSecret = randomBytes(20).toString("hex"); // 20 bytes = 40 hex chars (LS max is 40)
+
+          // Step 1: get the user's store ID (required by LS API)
+          const storesRes = await fetch("https://api.lemonsqueezy.com/v1/stores", {
+            headers: {
+              Authorization: `Bearer ${input.apiKey}`,
+              Accept: "application/vnd.api+json",
+            },
+          });
+          if (!storesRes.ok) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Failed to fetch LemonSqueezy stores. Check your API key.",
+            });
+          }
+          const storesData = (await storesRes.json()) as Record<string, unknown>;
+          const storesArr = storesData.data as Array<Record<string, unknown>> | undefined;
+          const storeId = typeof storesArr?.[0]?.id === "string" ? storesArr[0].id : null;
+          if (!storeId) {
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "No LemonSqueezy store found for this API key.",
+            });
+          }
+
+          // Step 2: create the webhook with the store relationship
+          const res = await fetch("https://api.lemonsqueezy.com/v1/webhooks", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${input.apiKey}`,
+              "Content-Type": "application/vnd.api+json",
+              Accept: "application/vnd.api+json",
+            },
+            body: JSON.stringify({
+              data: {
+                type: "webhooks",
+                attributes: {
+                  url: webhookUrl,
+                  secret: webhookSecret,
+                  events: ["order_created", "subscription_payment_success"],
+                },
+                relationships: {
+                  store: {
+                    data: { type: "stores", id: storeId },
+                  },
+                },
+              },
+            }),
+          });
+          if (!res.ok) {
+            let errMsg = "Failed to create LemonSqueezy webhook. Check your API key.";
+            try {
+              const data = (await res.json()) as Record<string, unknown>;
+              const errors = data.errors as Array<Record<string, unknown>> | undefined;
+              if (Array.isArray(errors) && typeof errors[0]?.detail === "string") {
+                errMsg = errors[0].detail;
+              }
+            } catch { /* ignore */ }
+            throw new TRPCError({ code: "BAD_REQUEST", message: errMsg });
+          }
+        }
+
+        const encryptedSecret = encryptRevenueKey(webhookSecret);
+        const updated = await db
+          .update(site)
+          .set({
+            revenueProvider: input.provider,
+            revenueProviderKeyEncrypted: encryptedSecret,
+            revenueProviderKeyUpdatedAt: new Date(),
+          })
+          .where(and(eq(site.id, input.siteId), eq(site.userId, ctx.session.user.id)))
+          .returning({ id: site.id, revenueProvider: site.revenueProvider, revenueProviderKeyUpdatedAt: site.revenueProviderKeyUpdatedAt });
+
+        if (!updated.length) {
+          throw new TRPCError({ code: "NOT_FOUND", message: "Site not found" });
+        }
         return updated[0];
       }),
   }),

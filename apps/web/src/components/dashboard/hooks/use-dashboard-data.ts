@@ -325,7 +325,8 @@ export function useDashboardData({
       totals.sessions += entry.sessions;
       totals.pageviews += entry.pageviews;
       totals.goals += entry.goals;
-      totals.revenue += entry.revenue;
+      // Revenue is stored in cents (smallest currency unit) — convert to dollars
+      totals.revenue += entry.revenue / 100;
       series.pageviews[dateKey] =
         (series.pageviews[dateKey] ?? 0) + entry.pageviews;
       series.visitors[dateKey] =
@@ -333,7 +334,8 @@ export function useDashboardData({
       series.sessions[dateKey] =
         (series.sessions[dateKey] ?? 0) + entry.sessions;
       series.goals[dateKey] = (series.goals[dateKey] ?? 0) + entry.goals;
-      series.revenue[dateKey] = (series.revenue[dateKey] ?? 0) + entry.revenue;
+      // Revenue in dollars for chart
+      series.revenue[dateKey] = (series.revenue[dateKey] ?? 0) + entry.revenue / 100;
     }
 
     for (const entry of rollupQuery.data?.dimensions ?? []) {
@@ -351,7 +353,8 @@ export function useDashboardData({
       bucket.pageviews[label] =
         (bucket.pageviews[label] ?? 0) + entry.pageviews;
       bucket.goals[label] = (bucket.goals[label] ?? 0) + entry.goals;
-      bucket.revenue[label] = (bucket.revenue[label] ?? 0) + entry.revenue;
+      // Revenue in dollars for dimension breakdowns
+      bucket.revenue[label] = (bucket.revenue[label] ?? 0) + entry.revenue / 100;
     }
 
     if (rangeVisitors === null) {
@@ -507,8 +510,10 @@ export function useDashboardData({
   // Aggregations
   const sessionCount = sessionMetrics.totalSessions;
   const totalRevenue = useRollups
-    ? rollupSummary.totals.revenue
-    : filteredEvents.reduce((sum, event) => sum + event.revenue, 0);
+    ? rollupSummary.totals.revenue  // already converted to dollars above
+    : filteredEvents.reduce((sum, event) =>
+        // raw events store revenue in cents — convert to dollars
+        sum + (event.revenue ?? 0) / 100, 0);
   const visitorsCount = useRollups
     ? rollupSummary.totals.visitors
     : visitorsList.length;
