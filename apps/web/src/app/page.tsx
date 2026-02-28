@@ -406,10 +406,16 @@ export default function Home() {
             />
             <FeatureCard
               icon={<PieChart className="w-12 h-12" strokeWidth={2.5} />}
+              title="Easy to use"
+              desc="Easy to use dashboard with clean and simple interface."
+              color="bg-[#cb6ce6]"
+            />
+            {/* <FeatureCard
+              icon={<PieChart className="w-12 h-12" strokeWidth={2.5} />}
               title="Funnel Analysis"
               desc="Identify exactly where users drop off and patch the leaky buckets in your flow."
               color="bg-[#cb6ce6]"
-            />
+            /> */}
             <FeatureCard
               icon={<Users className="w-12 h-12" strokeWidth={2.5} />}
               title="Fully Open Source"
