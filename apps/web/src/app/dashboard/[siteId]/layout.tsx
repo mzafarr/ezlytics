@@ -66,6 +66,12 @@ export default async function SiteDashboardLayout({
           >
             Settings
           </Link>
+          <Link
+            href={"/docs" as Route}
+            className={cn(buttonVariants({ variant: "secondary", size: "sm" }))}
+          >
+            Docs
+          </Link>
         </div>
         {children}
       </div>

@@ -12,6 +12,9 @@ import {
   Zap,
   Check,
   TrendingUp,
+  Linkedin,
+  Twitter,
+  Youtube,
 } from "lucide-react";
 import { DemoDashboard } from "@/components/marketing/demo-dashboard";
 import { Pricing } from "@/components/marketing/pricing";
@@ -480,6 +483,55 @@ export default function Home() {
           )}
         </div>
       </footer>
+
+      {/* Available for Work Banner */}
+      <div className="bg-[#f4f4f0] border-t-4 border-black py-5 px-4">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+          <p className="font-bold text-base text-black/70">
+            <span className="mr-2">👋</span>
+            Built by{" "}
+            <span className="font-black text-black">Muhammad Zafar</span>
+            {" — "}
+            <span className="bg-[#00bf63] border-2 border-black px-2 py-0.5 text-sm font-black uppercase tracking-wider shadow-[2px_2px_0px_0px_black] inline-block transform -rotate-1">
+              Open to work
+            </span>{" "}
+            <span className="text-black/60">
+              · freelance, consulting & full-time roles
+            </span>
+          </p>
+          <div className="flex items-center gap-3">
+            <a
+              href="https://linkedin.com/in/mzafarr"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="LinkedIn"
+              className="flex items-center gap-1.5 px-4 py-2 bg-white border-2 border-black text-sm font-bold uppercase shadow-[3px_3px_0px_0px_black] hover:translate-x-[3px] hover:translate-y-[3px] hover:shadow-none transition-all duration-150"
+            >
+              <Linkedin className="w-4 h-4" strokeWidth={2.5} />
+              LinkedIn
+            </a>
+            <a
+              href="https://x.com/mzafarr"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="X / Twitter"
+              className="flex items-center gap-1.5 px-4 py-2 bg-white border-2 border-black text-sm font-bold uppercase shadow-[3px_3px_0px_0px_black] hover:translate-x-[3px] hover:translate-y-[3px] hover:shadow-none transition-all duration-150"
+            >
+              <Twitter className="w-4 h-4" strokeWidth={2.5} />X / Twitter
+            </a>
+            <a
+              href="https://youtube.com/@mzafarr"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="YouTube"
+              className="flex items-center gap-1.5 px-4 py-2 bg-white border-2 border-black text-sm font-bold uppercase shadow-[3px_3px_0px_0px_black] hover:translate-x-[3px] hover:translate-y-[3px] hover:shadow-none transition-all duration-150"
+            >
+              <Youtube className="w-4 h-4" strokeWidth={2.5} />
+              YouTube
+            </a>
+          </div>
+        </div>
+      </div>
 
       {/* Tiny Footer */}
       <div className="bg-black text-white text-center py-6 font-bold uppercase tracking-widest text-sm border-t-4 border-black">

@@ -43,7 +43,7 @@
       return;
     }
     if (typeof console !== "undefined" && typeof console.warn === "function") {
-      console.warn("[Ralph Analytics] " + message);
+      console.warn("[Ezlytics] " + message);
     }
   }
 
@@ -681,10 +681,10 @@
         continue;
       }
       var attributeName = attribute.name;
-      if (attributeName.indexOf("data-fast-goal-") !== 0) {
+      if (attributeName.indexOf("data-ezlytics-goal-") !== 0) {
         continue;
       }
-      var rawKey = attributeName.slice("data-fast-goal-".length);
+      var rawKey = attributeName.slice("data-ezlytics-goal-".length);
       var key = normalizeMetadataKey(rawKey);
       if (!key) {
         continue;
@@ -768,7 +768,7 @@
   function findGoalElement(target) {
     var node = target;
     while (node && node !== document.documentElement) {
-      if (node.getAttribute && node.hasAttribute("data-fast-goal")) {
+      if (node.getAttribute && node.hasAttribute("data-ezlytics-goal")) {
         return node;
       }
       node = node.parentNode;
@@ -808,7 +808,7 @@
     if (!element || !element.getAttribute) {
       return false;
     }
-    var value = element.getAttribute("data-fast-scroll");
+    var value = element.getAttribute("data-ezlytics-scroll");
     return value !== null;
   }
 
@@ -816,7 +816,7 @@
     if (!element || !element.getAttribute) {
       return "";
     }
-    var rawName = element.getAttribute("data-fast-scroll") || "";
+    var rawName = element.getAttribute("data-ezlytics-scroll") || "";
     var name = normalizeGoalName(rawName);
     if (!name) {
       return "scroll";
@@ -921,7 +921,7 @@
     if (!goalElement) {
       return;
     }
-    var rawName = goalElement.getAttribute("data-fast-goal") || "";
+    var rawName = goalElement.getAttribute("data-ezlytics-goal") || "";
     var name = normalizeGoalName(rawName);
     if (!isValidGoalName(name)) {
       warn(
@@ -1085,19 +1085,19 @@
       if (!isEligibleScrollTarget(element)) {
         return;
       }
-      if (element.getAttribute("data-fast-scroll-fired") === "true") {
+      if (element.getAttribute("data-ezlytics-scroll-fired") === "true") {
         return;
       }
       var name = buildScrollGoalName(element);
       if (!name) {
-        element.setAttribute("data-fast-scroll-fired", "true");
+        element.setAttribute("data-ezlytics-scroll-fired", "true");
         return;
       }
       var thresholdValue = parseScrollThreshold(
-        element.getAttribute("data-fast-scroll-threshold"),
+        element.getAttribute("data-ezlytics-scroll-threshold"),
       );
       var delayValue = parseScrollDelay(
-        element.getAttribute("data-fast-scroll-delay"),
+        element.getAttribute("data-ezlytics-scroll-delay"),
       );
       var metadata = getGoalMetadata(element);
       var scrollObserver = new IntersectionObserver(
@@ -1110,7 +1110,7 @@
             if (entry.intersectionRatio < thresholdValue) {
               continue;
             }
-            element.setAttribute("data-fast-scroll-fired", "true");
+            element.setAttribute("data-ezlytics-scroll-fired", "true");
             scrollObserver.unobserve(element);
             scrollObserver.disconnect();
             scheduleScrollGoal(name, metadata, delayValue);
@@ -1121,7 +1121,7 @@
       scrollObserver.observe(element);
     }
 
-    var scrollTargets = document.querySelectorAll("[data-fast-scroll]");
+    var scrollTargets = document.querySelectorAll("[data-ezlytics-scroll]");
     for (var j = 0; j < scrollTargets.length; j += 1) {
       observeScrollTarget(scrollTargets[j]);
     }

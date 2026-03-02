@@ -12,6 +12,7 @@ export default function Header() {
   const links = [
     { to: "/", label: "Home" },
     { to: "/dashboard", label: "Dashboard" },
+    { to: "/docs", label: "Docs" },
   ] as const;
 
   if (pathname === "/") {
@@ -38,7 +39,7 @@ export default function Header() {
           return (
             <Link
               key={to}
-              href={to}
+              href={to as any}
               className="hover:underline decoration-2 underline-offset-4 hover:text-pink-600 transition-colors"
             >
               {label}
