@@ -14,6 +14,10 @@ const navItems = [
         title: "Quickstart",
         href: "/docs",
       },
+      {
+        title: "Self-Hosting",
+        href: "/docs/self-hosting",
+      },
     ],
   },
   {
