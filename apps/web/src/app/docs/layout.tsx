@@ -22,7 +22,29 @@ export default function DocsLayout({
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 w-full min-w-0 prose prose-slate max-w-none prose-headings:font-bold prose-h1:text-4xl prose-h1:tracking-tighter prose-h2:text-2xl prose-h2:tracking-tight prose-a:text-pink-600 hover:prose-a:text-pink-700 prose-code:bg-muted prose-code:p-1 prose-code:rounded-md prose-code:before:content-none prose-code:after:content-none prose-pre:border-2 prose-pre:border-foreground prose-pre:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] prose-pre:bg-zinc-950 prose-pre:text-zinc-50">
+      <main
+        className={[
+          "flex-1 w-full min-w-0 max-w-none",
+          // Headings
+          "[&_h1]:text-4xl [&_h1]:font-black [&_h1]:tracking-tighter [&_h1]:mb-3 [&_h1]:leading-tight",
+          "[&_h2]:text-2xl [&_h2]:font-bold [&_h2]:tracking-tight [&_h2]:mt-10 [&_h2]:mb-4 [&_h2]:border-b-2 [&_h2]:border-foreground/10 [&_h2]:pb-2",
+          "[&_h3]:text-lg [&_h3]:font-bold [&_h3]:mt-6 [&_h3]:mb-2",
+          "[&_h4]:text-base [&_h4]:font-bold [&_h4]:mt-4 [&_h4]:mb-1",
+          // Body text
+          "[&_p]:text-base [&_p]:leading-7 [&_p]:mb-4 [&_p]:text-foreground/90",
+          "[&_hr]:my-8 [&_hr]:border-foreground/15",
+          // Lists
+          "[&_ul]:mb-5 [&_ul]:pl-6 [&_ul]:space-y-2 [&_ul]:list-disc",
+          "[&_ol]:mb-5 [&_ol]:pl-6 [&_ol]:space-y-2 [&_ol]:list-decimal",
+          "[&_li]:text-base [&_li]:leading-7 [&_li]:text-foreground/90",
+          // Inline code
+          "[&_code]:bg-muted [&_code]:text-foreground [&_code]:rounded [&_code]:px-1.5 [&_code]:py-0.5 [&_code]:text-[0.85em] [&_code]:font-mono [&_code]:border [&_code]:border-foreground/15",
+          // Links
+          "[&_a]:text-pink-600 [&_a]:underline [&_a]:underline-offset-4 hover:[&_a]:text-pink-700",
+          // Strong
+          "[&_strong]:font-bold [&_strong]:text-foreground",
+        ].join(" ")}
+      >
         {children}
       </main>
     </div>

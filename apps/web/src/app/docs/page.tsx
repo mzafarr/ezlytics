@@ -51,22 +51,23 @@ export default function QuickstartPage() {
         Once you have your Project ID, check out our integration guides to get
         events flowing:
       </p>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 not-prose">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
         <a
           href="/docs/html"
-          className="flex flex-col p-4 border-2 border-foreground bg-background hover:bg-muted shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all rounded-md"
+          className="flex flex-col p-4 border-2 border-foreground bg-background hover:bg-muted shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all rounded-md no-underline!"
         >
           <h3 className="font-bold text-lg mb-1">Vanilla HTML</h3>
-          <p className="text-sm text-muted-foreground m-0">
-            Use a standard `&lt;script&gt;` tag for static sites or simple HTML.
+          <p className="text-sm text-muted-foreground m-0! mb-0!">
+            Use a standard <code className="text-xs">&lt;script&gt;</code> tag
+            for static sites or simple HTML.
           </p>
         </a>
         <a
           href="/docs/react"
-          className="flex flex-col p-4 border-2 border-foreground bg-background hover:bg-muted shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all rounded-md"
+          className="flex flex-col p-4 border-2 border-foreground bg-background hover:bg-muted shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] transition-all rounded-md no-underline!"
         >
           <h3 className="font-bold text-lg mb-1">React / Next.js</h3>
-          <p className="text-sm text-muted-foreground m-0">
+          <p className="text-sm text-muted-foreground m-0! mb-0!">
             Using the npm package directly in modern React applications.
           </p>
         </a>

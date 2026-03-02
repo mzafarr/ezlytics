@@ -155,8 +155,8 @@ export default function Home() {
 
       {/* Hero Section */}
       <header className="py-16 px-4 md:py-32 flex justify-between gap-8 max-w-7xl mx-auto">
-        <div className="space-y-8 relative z-10">
-          <div className="inline-block px-4 py-2 bg-[#ff914d] border-4 border-black shadow-[2.5px_2.5px_0px_0px_black] transform -rotate-2 font-bold uppercase tracking-wider mb-6">
+        <div className="space-y-12 relative z-10">
+          <div className="inline-block px-4 py-2 bg-[#ff914d] border-4 border-black shadow-[2.5px_2.5px_0px_0px_black] transform -rotate-2 font-bold uppercase tracking-wider mb-10">
             The Open-Source Revenue Analytics
           </div>
           <h1 className="text-6xl md:text-8xl font-black leading-[0.9] uppercase tracking-tighter">
@@ -165,15 +165,15 @@ export default function Home() {
               analytics.
             </span>
           </h1>
-          <p className="text-xl md:text-2xl font-bold max-w-lg border-l-8 border-black pl-6 py-2 bg-white/50">
+          <p className="text-xl md:text-2xl font-medium max-w-lg">
             Discover which marketing channels bring customers so you can grow
             your business, fast.
           </p>
-          <div className="flex flex-col sm:flex-row gap-6 pt-4">
+          <div className="flex flex-col sm:flex-row gap-6">
             {session ? (
               <Link
                 href="/dashboard"
-                className="group flex items-center justify-center gap-3 px-8 py-4 text-xl font-black uppercase text-black bg-[#cb6ce6] border-4 border-black shadow-[8px_8px_0px_0px_black] hover:translate-x-[8px] hover:translate-y-[8px] hover:shadow-none transition-all duration-200"
+                className="group flex items-center justify-center gap-3 px-8 py-4 text-xl font-black uppercase text-black  border-4 border-black shadow-[8px_8px_0px_0px_black] hover:translate-x-[8px] hover:translate-y-[8px] hover:shadow-none transition-all duration-200"
               >
                 Go to Dashboard{" "}
                 <ArrowRight
@@ -184,7 +184,7 @@ export default function Home() {
             ) : !ossOnly ? (
               <Link
                 href="/dashboard/new"
-                className="group flex items-center justify-center gap-3 px-8 py-4 text-xl font-black uppercase text-black bg-[#cb6ce6] border-4 border-black shadow-[8px_8px_0px_0px_black] hover:translate-x-[8px] hover:translate-y-[8px] hover:shadow-none transition-all duration-200"
+                className="group flex items-center justify-center gap-3 px-8 py-4 text-xl font-black uppercase text-black border-4 border-black shadow-[8px_8px_0px_0px_black] hover:translate-x-[8px] hover:translate-y-[8px] hover:shadow-none transition-all duration-200"
               >
                 Start Free Trial{" "}
                 <ArrowRight
@@ -485,50 +485,73 @@ export default function Home() {
       </footer>
 
       {/* Available for Work Banner */}
-      <div className="bg-[#f4f4f0] border-t-4 border-black py-5 px-4">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
-          <p className="font-bold text-base text-black/70">
-            <span className="mr-2">👋</span>
-            Built by{" "}
-            <span className="font-black text-black">Muhammad Zafar</span>
-            {" — "}
-            <span className="bg-[#00bf63] border-2 border-black px-2 py-0.5 text-sm font-black uppercase tracking-wider shadow-[2px_2px_0px_0px_black] inline-block transform -rotate-1">
-              Open to work
-            </span>{" "}
-            <span className="text-black/60">
-              · freelance, consulting & full-time roles
+      <div className="bg-[#f4f4f0] border-t-4 border-black py-6 px-4">
+        <div className="max-w-7xl mx-auto flex flex-col gap-4">
+          {/* Row 1 — name + badge + socials */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <p className="font-bold text-base text-black/70">
+              <span className="mr-2">👋</span>
+              Built by{" "}
+              <span className="font-black text-black">Muhammad Zafar</span>
+              {" — "}
+              <span className="bg-[#00bf63] border-2 border-black px-2 py-0.5 text-sm font-black uppercase tracking-wider shadow-[2px_2px_0px_0px_black] inline-block transform -rotate-1">
+                Open to work
+              </span>{" "}
+              <span className="text-black/60 text-sm">
+                · freelance, consulting & full-time
+              </span>
+            </p>
+            <div className="flex items-center gap-2 shrink-0">
+              <a
+                href="https://linkedin.com/in/mzafarr"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="LinkedIn"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-white border-2 border-black text-xs font-bold uppercase shadow-[3px_3px_0px_0px_black] hover:translate-x-[3px] hover:translate-y-[3px] hover:shadow-none transition-all duration-150"
+              >
+                <Linkedin className="w-3.5 h-3.5" strokeWidth={2.5} />
+                LinkedIn
+              </a>
+              <a
+                href="https://x.com/mzafarr"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="X / Twitter"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-white border-2 border-black text-xs font-bold uppercase shadow-[3px_3px_0px_0px_black] hover:translate-x-[3px] hover:translate-y-[3px] hover:shadow-none transition-all duration-150"
+              >
+                <Twitter className="w-3.5 h-3.5" strokeWidth={2.5} />X
+              </a>
+              <a
+                href="https://youtube.com/@mzafarr"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="YouTube"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-white border-2 border-black text-xs font-bold uppercase shadow-[3px_3px_0px_0px_black] hover:translate-x-[3px] hover:translate-y-[3px] hover:shadow-none transition-all duration-150"
+              >
+                <Youtube className="w-3.5 h-3.5" strokeWidth={2.5} />
+                YouTube
+              </a>
+            </div>
+          </div>
+
+          {/* Row 2 — skill / service pills */}
+          <div className="flex flex-wrap gap-2 items-center">
+            <span className="text-xs font-black uppercase tracking-widest text-black/40 mr-1">
+              Available for:
             </span>
-          </p>
-          <div className="flex items-center gap-3">
-            <a
-              href="https://linkedin.com/in/mzafarr"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="LinkedIn"
-              className="flex items-center gap-1.5 px-4 py-2 bg-white border-2 border-black text-sm font-bold uppercase shadow-[3px_3px_0px_0px_black] hover:translate-x-[3px] hover:translate-y-[3px] hover:shadow-none transition-all duration-150"
-            >
-              <Linkedin className="w-4 h-4" strokeWidth={2.5} />
-              LinkedIn
-            </a>
-            <a
-              href="https://x.com/mzafarr"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="X / Twitter"
-              className="flex items-center gap-1.5 px-4 py-2 bg-white border-2 border-black text-sm font-bold uppercase shadow-[3px_3px_0px_0px_black] hover:translate-x-[3px] hover:translate-y-[3px] hover:shadow-none transition-all duration-150"
-            >
-              <Twitter className="w-4 h-4" strokeWidth={2.5} />X / Twitter
-            </a>
-            <a
-              href="https://youtube.com/@mzafarr"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="YouTube"
-              className="flex items-center gap-1.5 px-4 py-2 bg-white border-2 border-black text-sm font-bold uppercase shadow-[3px_3px_0px_0px_black] hover:translate-x-[3px] hover:translate-y-[3px] hover:shadow-none transition-all duration-150"
-            >
-              <Youtube className="w-4 h-4" strokeWidth={2.5} />
-              YouTube
-            </a>
+            {[
+              "Full-Stack Web Dev",
+              "Mobile App Dev",
+              "AI Agents & Automation",
+              "SaaS Products",
+            ].map((label) => (
+              <span
+                key={label}
+                className="bg-white border-2 border-black px-3 py-1 text-xs font-bold uppercase tracking-wide shadow-[2px_2px_0px_0px_black] text-black/70"
+              >
+                {label}
+              </span>
+            ))}
           </div>
         </div>
       </div>
