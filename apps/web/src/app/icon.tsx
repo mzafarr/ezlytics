@@ -1,6 +1,5 @@
 import { ImageResponse } from "next/og";
 
-export const runtime = "edge";
 export const size = { width: 256, height: 256 };
 export const contentType = "image/png";
 
@@ -37,7 +36,7 @@ export default function Icon() {
           width: 200,
           height: 200,
           backgroundColor: "#f59e0b",
-          border: "16px solid black",
+          border: "16px solid #111111",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
