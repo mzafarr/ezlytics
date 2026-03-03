@@ -503,7 +503,7 @@ export default function Home() {
             </p>
             <div className="flex items-center gap-2 shrink-0">
               <a
-                href="https://linkedin.com/in/mzafarr"
+                href="https://linkedin.com/in/zafarr"
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="LinkedIn"
@@ -513,7 +513,7 @@ export default function Home() {
                 LinkedIn
               </a>
               <a
-                href="https://x.com/mzafarr"
+                href="https://x.com/zafarrbuildzz"
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="X / Twitter"
@@ -522,7 +522,7 @@ export default function Home() {
                 <Twitter className="w-3.5 h-3.5" strokeWidth={2.5} />X
               </a>
               <a
-                href="https://youtube.com/@mzafarr"
+                href="https://youtube.com/@zafarbuildz"
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="YouTube"
